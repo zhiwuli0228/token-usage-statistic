@@ -1,8 +1,8 @@
 {
   "name": "token-usage-statistic",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Token usage statistics for every model call in DeepSeek Harness: collects durable session usage, aggregates by model, day and session, and renders a sidebar panel in the Web and Desktop UI.",
+  "description": "Token usage statistics for every model call in DeepSeek Harness: samples provider usage, backfills history, prices each call when it happened, and renders a sidebar panel in the Web and Desktop UI.",
   "license": "MIT",
   "author": "zhiwuli0228",
   "homepage": "https://github.com/zhiwuli0228/token-usage-statistic#readme",
@@ -25,7 +25,6 @@
   "files": [
     "index.js",
     "client.js",
-    "src",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
@@ -36,16 +35,20 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test",
-    "test:watch": "node --test --watch",
-    "check": "node --check index.js && node --check client.js"
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:bundle": "node scripts/smoke-client.mjs",
+    "check": "npm run typecheck && npm run build && npm run test && npm run test:bundle"
   },
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
     "token-usage",
-    "statistics"
+    "statistics",
+    "cost"
   ],
   "dsh": {
     "manifestVersion": 1,
@@ -60,5 +63,12 @@
         "@deepseek-ai/dsh-client-ui-sidebar"
       ]
     }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

@@ -5,3 +5,7 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+.vitest/
+*.tsbuildinfo
+
