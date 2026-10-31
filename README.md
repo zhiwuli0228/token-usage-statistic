@@ -168,4 +168,4 @@ node --check index.js; node --check client.js   # 语法检查
 
 ## License
 
-尚未选择许可证；在发布或分发前请补上 `LICENSE`。
+[MIT](LICENSE) © 2026 zhiwuli0228

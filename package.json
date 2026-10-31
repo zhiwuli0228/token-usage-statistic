@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Token usage statistics for every model call in DeepSeek Harness: collects durable session usage, aggregates by model, day and session, and renders a sidebar panel in the Web and Desktop UI.",
+  "license": "MIT",
+  "author": "zhiwuli0228",
+  "homepage": "https://github.com/zhiwuli0228/token-usage-statistic#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhiwuli0228/token-usage-statistic.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhiwuli0228/token-usage-statistic/issues"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -19,7 +29,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
