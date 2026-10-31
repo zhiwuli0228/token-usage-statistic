@@ -10,6 +10,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { DEFAULT_MODEL_ALIASES, DEFAULT_PRICED_PROVIDERS } from './pricing.js'
+import { readMonitors, type AccountsConfig } from './accounts/registry.js'
+import { resolveBudgetConfig, type BudgetConfig } from './budgets.js'
 import type { PricingRule } from './types.js'
 
 /** Raw config as it arrives from the Loader row. */
@@ -21,6 +23,8 @@ export interface PluginConfig {
   backfill?: unknown
   modelAliases?: unknown
   pricing?: unknown
+  accounts?: unknown
+  budgets?: unknown
 }
 
 /** Normalized config used by the plugin. */
@@ -33,6 +37,8 @@ export interface ResolvedConfig {
   modelAliases: Record<string, string>
   pricingRules: PricingRule[]
   pricedProviders: string[]
+  accounts: AccountsConfig
+  budgets: BudgetConfig
 }
 
 const DEFAULT_REFRESH_MS = 15000
@@ -75,6 +81,10 @@ export function resolveConfig(input: unknown): ResolvedConfig {
     ? pricing.providers.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
     : []
 
+  const accountsRaw = config.accounts !== null && typeof config.accounts === 'object' ? (config.accounts as Record<string, unknown>) : {}
+  const accountRefresh = Number(accountsRaw.refreshMs)
+  const accountTimeout = Number(accountsRaw.timeoutMs)
+
   return {
     dataFile,
     refreshMs: Number.isFinite(refresh) && refresh >= 3000 ? Math.floor(refresh) : DEFAULT_REFRESH_MS,
@@ -84,5 +94,11 @@ export function resolveConfig(input: unknown): ResolvedConfig {
     modelAliases: { ...DEFAULT_MODEL_ALIASES, ...stringRecord(config.modelAliases) },
     pricingRules: rules,
     pricedProviders: providers.length > 0 ? providers : [...DEFAULT_PRICED_PROVIDERS],
+    accounts: {
+      refreshMs: Number.isFinite(accountRefresh) && accountRefresh >= 60000 ? Math.min(Math.floor(accountRefresh), 86400000) : 600000,
+      timeoutMs: Number.isFinite(accountTimeout) && accountTimeout >= 1000 ? Math.min(Math.floor(accountTimeout), 60000) : 15000,
+      monitors: readMonitors(accountsRaw.monitors),
+    },
+    budgets: resolveBudgetConfig(config.budgets),
   }
 }

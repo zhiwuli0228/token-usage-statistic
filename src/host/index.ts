@@ -14,7 +14,9 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { IDLE_BACKFILL, SUMMARY_PATH, createHttpHandler } from './api.js'
+import { IDLE_BACKFILL, ROUTES, createHttpHandler } from './api.js'
+import { AccountRegistry, emptyAccountsPayload } from './accounts/registry.js'
+import { budgetState } from './budgets.js'
 import { Backfill, type Persistence } from './backfill.js'
 import { Collector } from './collector.js'
 import { defaultDataFile, resolveConfig } from './config.js'
@@ -84,6 +86,7 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
   const ledger = new LedgerWriter(dataFile, { onError: (error) => warn('ledger append failed:', describeError(error)) })
   const collector = new Collector()
   let backfill: Backfill | undefined
+  let registry: AccountRegistry | undefined
 
   try {
     const loaded = await loadLedger(dataFile)
@@ -118,21 +121,42 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
     const handler = createHttpHandler({
       store,
       backfill: (): BackfillStatus => backfill?.getStatus() ?? IDLE_BACKFILL,
+      accounts: () => registry?.snapshot() ?? emptyAccountsPayload(settings.accounts.refreshMs),
+      budgets: (now: number) => budgetState(store, settings.budgets, now),
+      refreshAccounts: () => {
+        void registry?.refresh()
+      },
       refreshMs: settings.refreshMs,
     })
     try {
-      scope.effect(() => server.register({ kind: 'exact', path: SUMMARY_PATH, handler }))
+      for (const route of Object.values(ROUTES)) {
+        scope.effect(() => server.register({ kind: 'exact', path: route, handler }))
+      }
       let origin: string | undefined
       try {
         origin = server.getOrigin?.()
       } catch {
         origin = undefined
       }
-      void recordActivation({ route: 'registered', origin, paths: [SUMMARY_PATH] })
+      void recordActivation({ route: 'registered', origin, paths: Object.values(ROUTES) })
     } catch (error) {
       warn('web route registration failed:', describeError(error))
       void recordActivation({ route: 'failed', error: describeError(error) })
     }
+  })
+
+  ctx.inject(['settings', 'credentials'], (scope) => {
+    registry = new AccountRegistry({
+      services: scope,
+      dataDir: path.dirname(dataFile),
+      config: settings.accounts,
+      version: '0.3.0',
+      log: (message) => warn(message),
+    })
+    if (typeof (registry as AccountRegistry & { loadCache?: () => Promise<void> }).loadCache === 'function') {
+      void registry.loadCache()
+    }
+    scope.effect(() => registry?.start() ?? (() => {}))
   })
 
   if (settings.backfill) {

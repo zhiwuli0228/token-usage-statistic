@@ -47,6 +47,21 @@ export function formatPercent(rate: number | null | undefined): string {
   return `${rate.toFixed(1)}%`
 }
 
+/** Money or quota amount in a named currency. */
+export function formatMoney(amount: number | null | undefined, currency: string | null | undefined): string {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '—'
+  if (currency === null || currency === undefined) return formatInteger(amount)
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: amount !== 0 && Math.abs(amount) < 1 ? 4 : 2,
+    }).format(amount)
+  } catch {
+    return `${amount} ${currency}`
+  }
+}
+
 /** Local time of day. */
 export function formatClock(time: number | null | undefined): string {
   const date = new Date(typeof time === 'number' && Number.isFinite(time) ? time : Date.now())

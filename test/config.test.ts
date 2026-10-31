@@ -64,4 +64,24 @@ describe('config', () => {
     expect(resolved.pricedProviders).toEqual(['my-gateway'])
     expect(resolveConfig({}).pricedProviders).toContain('deepseek-account')
   })
+
+  it('resolves account refresh, monitors and budgets', () => {
+    const resolved = resolveConfig({
+      accounts: {
+        refreshMs: 120000,
+        timeoutMs: 5000,
+        monitors: [{ id: 'm', mode: 'balance', baseURL: 'https://billing.example.com/x', balance: { total: '/total' } }],
+      },
+      budgets: { currency: 'CNY', daily: 5 },
+    })
+    expect(resolved.accounts.refreshMs).toBe(120000)
+    expect(resolved.accounts.timeoutMs).toBe(5000)
+    expect(resolved.accounts.monitors).toHaveLength(1)
+    expect(resolved.accounts.monitors[0]?.id).toBe('m')
+    expect(resolved.budgets).toEqual({ currency: 'CNY', daily: 5, monthly: null })
+  })
+
+  it('clamps an account refresh below one minute', () => {
+    expect(resolveConfig({ accounts: { refreshMs: 1000 } }).accounts.refreshMs).toBe(600000)
+  })
 })

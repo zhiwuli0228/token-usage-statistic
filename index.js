@@ -1,10 +1,157 @@
 // src/host/index.ts
-import { mkdir as mkdir2, writeFile } from "node:fs/promises";
-import path3 from "node:path";
+import { mkdir as mkdir3, writeFile as writeFile2 } from "node:fs/promises";
+import path4 from "node:path";
+
+// src/host/export.ts
+var EXPORT_SCHEMA_VERSION = "1.0.0";
+var CSV_FORMULA_PREFIX = /^[\t\r\n ]*[=+\-@]/;
+function csvCell(value, text = false) {
+  if (value === null || value === void 0) return '""';
+  let rendered = String(value);
+  if (text && CSV_FORMULA_PREFIX.test(rendered)) rendered = `'${rendered}`;
+  return `"${rendered.replaceAll('"', '""')}"`;
+}
+function csv(rows) {
+  return `\uFEFF${rows.map((row) => row.map((cell) => csvCell(cell.value, cell.text)).join(",")).join("\r\n")}\r
+`;
+}
+function numeric(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : "";
+}
+function dailyCsv(store) {
+  const rows = [[
+    { value: "date" },
+    { value: "provider" },
+    { value: "model" },
+    { value: "calls" },
+    { value: "input_tokens" },
+    { value: "cache_read_tokens" },
+    { value: "cache_write_tokens" },
+    { value: "output_tokens" },
+    { value: "total_tokens" },
+    { value: "cache_hit_rate" },
+    { value: "estimated_cost" },
+    { value: "currency" },
+    { value: "cost_complete" }
+  ]];
+  for (const row of store.dailyRows()) {
+    rows.push([
+      { value: row.day, text: true },
+      { value: row.provider, text: true },
+      { value: row.model, text: true },
+      { value: row.calls },
+      { value: row.input },
+      { value: row.cacheRead },
+      { value: row.cacheWrite },
+      { value: row.output },
+      { value: row.tokens },
+      { value: numeric(row.cacheHitRate) },
+      { value: row.cost.complete ? numeric(row.cost.amount) : "" },
+      { value: row.cost.complete ? row.cost.currency : "", text: true },
+      { value: row.cost.complete }
+    ]);
+  }
+  return csv(rows);
+}
+function sessionsCsv(store) {
+  const rows = [[
+    { value: "session_id" },
+    { value: "providers" },
+    { value: "models" },
+    { value: "calls" },
+    { value: "input_tokens" },
+    { value: "cache_read_tokens" },
+    { value: "cache_write_tokens" },
+    { value: "output_tokens" },
+    { value: "total_tokens" },
+    { value: "cache_hit_rate" },
+    { value: "estimated_cost" },
+    { value: "currency" },
+    { value: "cost_complete" },
+    { value: "first_at" },
+    { value: "last_at" }
+  ]];
+  for (const row of store.sessionRows()) {
+    rows.push([
+      { value: row.sessionId, text: true },
+      { value: row.providers.join(" | "), text: true },
+      { value: row.models.join(" | "), text: true },
+      { value: row.calls },
+      { value: row.input },
+      { value: row.cacheRead },
+      { value: row.cacheWrite },
+      { value: row.output },
+      { value: row.tokens },
+      { value: numeric(row.cacheHitRate) },
+      { value: row.cost.complete ? numeric(row.cost.amount) : "" },
+      { value: row.cost.complete ? row.cost.currency : "", text: true },
+      { value: row.cost.complete },
+      { value: new Date(row.firstAt).toISOString(), text: true },
+      { value: new Date(row.lastAt).toISOString(), text: true }
+    ]);
+  }
+  return csv(rows);
+}
+function jsonExport(options) {
+  const { store } = options;
+  const exportedAt = options.exportedAt ?? Date.now();
+  return {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    exportedAt: new Date(exportedAt).toISOString(),
+    pricing: { catalogUpdatedAt: store.pricingCatalogUpdatedAt() },
+    days: store.dailyRows().map((row) => ({
+      date: row.day,
+      provider: row.provider,
+      model: row.model,
+      calls: row.calls,
+      tokens: { input: row.input, cacheRead: row.cacheRead, cacheWrite: row.cacheWrite, output: row.output, total: row.tokens },
+      cacheHitRate: row.cacheHitRate,
+      cost: { amount: row.cost.complete ? row.cost.amount : null, currency: row.cost.complete ? row.cost.currency : null, complete: row.cost.complete }
+    })),
+    sessions: store.sessionRows().map((row) => ({
+      sessionId: row.sessionId,
+      providers: row.providers,
+      models: row.models,
+      calls: row.calls,
+      tokens: { input: row.input, cacheRead: row.cacheRead, cacheWrite: row.cacheWrite, output: row.output, total: row.tokens },
+      cacheHitRate: row.cacheHitRate,
+      cost: { amount: row.cost.complete ? row.cost.amount : null, currency: row.cost.complete ? row.cost.currency : null, complete: row.cost.complete },
+      firstAt: new Date(row.firstAt).toISOString(),
+      lastAt: new Date(row.lastAt).toISOString()
+    })),
+    budgets: options.budgets,
+    accounts: options.accounts.map((account) => ({
+      id: account.id,
+      displayName: account.displayName,
+      mode: account.mode,
+      adapter: account.adapter,
+      configured: account.configured,
+      status: account.status,
+      stale: account.stale,
+      fetchedAt: account.fetchedAt,
+      lastError: account.lastError,
+      balance: account.balance ? {
+        currency: account.balance.currency,
+        total: account.balance.total,
+        used: account.balance.used,
+        limit: account.balance.limit,
+        granted: account.balance.granted,
+        toppedUp: account.balance.toppedUp
+      } : void 0,
+      subscription: account.subscription ? { plan: account.subscription.plan, windows: account.subscription.windows } : void 0
+    }))
+  };
+}
 
 // src/host/api.ts
 var API_PREFIX = "/token-usage-statistic/";
-var SUMMARY_PATH = `${API_PREFIX}api/summary`;
+var ROUTES = {
+  summary: `${API_PREFIX}api/summary`,
+  accounts: `${API_PREFIX}api/accounts`,
+  exportDaily: `${API_PREFIX}api/export/daily.csv`,
+  exportSessions: `${API_PREFIX}api/export/sessions.csv`,
+  exportJson: `${API_PREFIX}api/export.json`
+};
 function parseDays(value, fallback = 30) {
   if (value === null || value === "") return fallback;
   if (value === "all") return null;
@@ -18,20 +165,31 @@ function parseLimit(value, fallback, max) {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(Math.floor(parsed), max);
 }
-function sendJson(response, status, body, options = {}) {
-  if (typeof response.writeHead !== "function" || typeof response.end !== "function") return;
+function isLoopbackRequest(request) {
+  const address = request.socket?.remoteAddress;
+  if (typeof address !== "string" || address === "") return true;
+  return address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
+}
+function writeHeaders(response, status, headers) {
+  response.writeHead(status, headers);
+}
+function sendJson(response, status, body, method = "GET") {
   const payload = JSON.stringify(body);
-  response.writeHead(status, {
+  writeHeaders(response, status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
-    "content-length": Buffer.byteLength(payload),
-    ...options.headers ?? {}
+    "content-length": String(Buffer.byteLength(payload))
   });
-  if (options.method === "HEAD") {
-    response.end();
-    return;
-  }
-  response.end(payload);
+  response.end(method === "HEAD" ? void 0 : payload);
+}
+function sendDownload(response, contentType, filename, payload, method = "GET") {
+  writeHeaders(response, 200, {
+    "content-type": contentType,
+    "cache-control": "no-store",
+    "content-disposition": `attachment; filename="${filename}"`,
+    "content-length": String(Buffer.byteLength(payload))
+  });
+  response.end(method === "HEAD" ? void 0 : payload);
 }
 var IDLE_BACKFILL = {
   state: "idle",
@@ -51,127 +209,734 @@ function createHttpHandler(dependencies) {
     try {
       url = new URL(typeof request.url === "string" ? request.url : "/", "http://localhost");
     } catch {
-      sendJson(response, 400, { error: "bad-request" }, { method });
+      sendJson(response, 400, { error: "bad-request" }, method);
       return;
     }
-    if (url.pathname !== SUMMARY_PATH) {
-      sendJson(response, 404, { error: "not-found", path: url.pathname }, { method });
+    if (!isLoopbackRequest(request)) {
+      sendJson(response, 403, { error: "loopback-only" }, method);
       return;
     }
     if (method !== "GET" && method !== "HEAD") {
-      sendJson(response, 405, { error: "method-not-allowed" }, { method, headers: { allow: "GET, HEAD" } });
+      sendJson(response, 405, { error: "method-not-allowed" }, method);
       return;
     }
     try {
-      const days = parseDays(url.searchParams.get("days"));
-      const sessionLimit = parseLimit(url.searchParams.get("sessions"), 12, 100);
-      const recentLimit = parseLimit(url.searchParams.get("recent"), 20, 100);
-      const snapshot = dependencies.store.snapshot({
-        days,
-        sessionLimit,
-        recentLimit,
-        now: now(),
-        backfill: dependencies.backfill() ?? IDLE_BACKFILL,
-        refreshMs: dependencies.refreshMs
-      });
-      sendJson(response, 200, snapshot, { method });
+      switch (url.pathname) {
+        case ROUTES.summary: {
+          const snapshot = dependencies.store.snapshot({
+            days: parseDays(url.searchParams.get("days")),
+            sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
+            recentLimit: parseLimit(url.searchParams.get("recent"), 20, 100),
+            now: now(),
+            backfill: dependencies.backfill(),
+            budgets: dependencies.budgets(now()),
+            refreshMs: dependencies.refreshMs
+          });
+          sendJson(response, 200, snapshot, method);
+          return;
+        }
+        case ROUTES.accounts: {
+          if (url.searchParams.get("refresh") === "1") dependencies.refreshAccounts();
+          sendJson(response, 200, dependencies.accounts(), method);
+          return;
+        }
+        case ROUTES.exportDaily: {
+          sendDownload(response, "text/csv; charset=utf-8", "token-usage-daily.csv", dailyCsv(dependencies.store), method);
+          return;
+        }
+        case ROUTES.exportSessions: {
+          sendDownload(response, "text/csv; charset=utf-8", "token-usage-sessions.csv", sessionsCsv(dependencies.store), method);
+          return;
+        }
+        case ROUTES.exportJson: {
+          const body = jsonExport({
+            store: dependencies.store,
+            accounts: dependencies.accounts().accounts,
+            budgets: dependencies.budgets(now()),
+            exportedAt: now()
+          });
+          sendJson(response, 200, body, method);
+          return;
+        }
+        default:
+          sendJson(response, 404, { error: "not-found", path: url.pathname }, method);
+      }
     } catch (error) {
-      sendJson(
-        response,
-        500,
-        { error: "internal", message: error instanceof Error ? error.message : String(error) },
-        { method }
-      );
+      sendJson(response, 500, { error: "internal", message: error instanceof Error ? error.message : String(error) }, method);
     }
   };
 }
 
-// src/host/backfill.ts
-var Backfill = class {
-  options;
-  running = false;
-  status = {
-    state: "idle",
-    sessions: 0,
-    events: 0,
-    skipped: 0,
-    inherited: 0,
-    startedAt: null,
-    finishedAt: null,
-    error: null
-  };
-  constructor(options) {
-    this.options = options;
-  }
-  /** Current progress (a detached copy). */
-  getStatus() {
-    return { ...this.status };
-  }
-  publish(patch) {
-    this.status = { ...this.status, ...patch };
-    this.options.onChange?.(this.getStatus());
-  }
-  /** Run one scan; concurrent calls are no-ops. */
-  async run() {
-    if (this.running) return;
-    this.running = true;
-    const now = this.options.now ?? Date.now;
-    this.publish({ state: "running", startedAt: now(), finishedAt: null, error: null, sessions: 0, events: 0, skipped: 0, inherited: 0 });
-    try {
-      const sessions = await this.options.persistence.list();
-      let cursor = 0;
-      let events = 0;
-      while (cursor < sessions.length) {
-        const batch = sessions.slice(cursor, cursor + 8);
-        cursor += batch.length;
-        await Promise.all(batch.map((session) => this.scanOne(session)));
-        events = this.status.events;
-        this.publish({ events });
-      }
-      this.publish({ state: "done", events, finishedAt: now() });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.options.log?.(`historical scan failed: ${message}`);
-      this.publish({ state: "error", error: message, finishedAt: now() });
-    } finally {
-      this.running = false;
-    }
-  }
-  async scanOne(session) {
-    const sessionId = typeof session?.header?.id === "string" ? session.header.id : "";
-    if (sessionId === "") return;
-    const last = this.options.lastSeqOf(sessionId);
-    const ahead = typeof session.eventCount === "number" ? session.eventCount > last + 1 : true;
-    if (!ahead) {
-      this.publish({ skipped: this.status.skipped + 1 });
-      return;
-    }
-    let handle;
-    try {
-      handle = await this.options.persistence.open(sessionId, "read");
-      const inherited = Number.isSafeInteger(handle.inheritedEventCount) && (handle.inheritedEventCount ?? 0) > 0 ? handle.inheritedEventCount : 0;
-      const offset = Math.max(last + 1, inherited);
-      if (inherited > 0 && inherited > last + 1) this.publish({ inherited: this.status.inherited + 1 });
-      const result = await handle.read(offset);
-      for (const event of result.events) {
-        if (Number.isFinite(event.seq) && event.seq < offset) continue;
-        this.options.onEvent(sessionId, event);
-        this.publish({ events: this.status.events + 1 });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.options.log?.(`historical scan skipped ${sessionId}: ${message}`);
-    } finally {
-      if (handle !== void 0) {
-        try {
-          await handle.close();
-        } catch {
-        }
-      }
-    }
-    this.publish({ sessions: this.status.sessions + 1 });
+// src/host/accounts/registry.ts
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+// src/host/accounts/net.ts
+var MAX_BYTES = 1024 * 1024;
+var AccountError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.name = "AccountError";
+    this.code = code;
   }
 };
+function isLoopbackHost(hostname) {
+  return hostname === "127.0.0.1" || hostname === "::1" || hostname === "localhost";
+}
+function statusCodeFor(status) {
+  if (status === 401 || status === 403) return "unauthorized";
+  if (status === 429) return "rate-limited";
+  if (status === 404 || status === 405) return "unsupported";
+  if (status >= 500) return "unavailable";
+  return "invalid-response";
+}
+async function fetchJson(url, options = {}, fetchImpl = fetch) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new AccountError("invalid-url", "account endpoint is not a valid URL");
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new AccountError("invalid-url", "account endpoint must not embed credentials");
+  }
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLoopbackHost(parsed.hostname))) {
+    throw new AccountError("insecure-url", "account endpoint must use HTTPS");
+  }
+  let response;
+  try {
+    response = await fetchImpl(parsed.href, {
+      method: "GET",
+      headers: { accept: "application/json", ...options.headers ?? {} },
+      redirect: "manual",
+      signal: AbortSignal.timeout(options.timeoutMs ?? 15e3)
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    if (name === "TimeoutError" || name === "AbortError") throw new AccountError("timeout", "account endpoint timed out");
+    throw new AccountError("network", "account endpoint is unreachable");
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new AccountError("redirect", "account endpoint redirected; refusing to follow");
+  }
+  if (!response.ok) {
+    throw new AccountError(statusCodeFor(response.status), `account endpoint returned HTTP ${response.status}`);
+  }
+  const text = await response.text();
+  if (text.length > (options.maxBytes ?? MAX_BYTES)) {
+    throw new AccountError("too-large", "account response exceeded the size limit");
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AccountError("invalid-json", "account endpoint returned invalid JSON");
+  }
+}
+
+// src/host/accounts/schemes.ts
+function pointerValue(root, pointer) {
+  if (pointer === void 0 || pointer === "") return root;
+  if (!pointer.startsWith("/")) return void 0;
+  let current = root;
+  for (const raw of pointer.slice(1).split("/")) {
+    const key = raw.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (Array.isArray(current)) {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index < 0) return void 0;
+      current = current[index];
+    } else if (current !== null && typeof current === "object") {
+      current = current[key];
+    } else {
+      return void 0;
+    }
+  }
+  return current;
+}
+function numberOrNull(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+function stringOrNull(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+function emptyBalance(currency = null) {
+  return { currency, total: null, used: null, limit: null, granted: null, toppedUp: null, available: null };
+}
+function schemeForProvider(providerId, baseURL) {
+  const id = providerId.toLowerCase();
+  let host = "";
+  if (typeof baseURL === "string") {
+    try {
+      host = new URL(baseURL).hostname.toLowerCase();
+    } catch {
+      host = "";
+    }
+  }
+  if (id.includes("deepseek") || host === "api.deepseek.com") return "deepseek";
+  if (id.includes("moonshot") || host.includes("moonshot")) return "moonshot";
+  if (id.includes("zai") || id.includes("zhipu") || host.includes("z.ai") || host.includes("bigmodel.cn")) return "zai";
+  if (id.includes("openrouter") || host.includes("openrouter.ai")) return "openrouter";
+  if (id.includes("orcarouter") || host.includes("orcarouter")) return "orcarouter";
+  return null;
+}
+function originOf(baseURL) {
+  try {
+    return new URL(baseURL);
+  } catch {
+    throw new AccountError("invalid-url", "provider base URL is invalid");
+  }
+}
+function schemeURL(scheme, baseURL) {
+  const base = originOf(baseURL);
+  switch (scheme) {
+    case "deepseek":
+      return new URL("/user/balance", base.origin).href;
+    case "moonshot":
+      return new URL("/v1/users/me/balance", base.origin).href;
+    case "zai":
+      return new URL("/api/paas/v4/balance", base.origin).href;
+    case "openrouter":
+      return new URL("/api/v1/credits", base.origin).href;
+    case "orcarouter": {
+      const pathname = base.pathname.replace(/\/+$/, "");
+      const prefix = pathname === "" ? "/v1" : pathname.endsWith("/v1") ? pathname : `${pathname}/v1`;
+      return new URL(`${prefix}/balance`, base.origin).href;
+    }
+  }
+}
+function walletTotal(entries, currency) {
+  if (!Array.isArray(entries)) return 0;
+  let total = 0;
+  for (const entry of entries) {
+    if (entry === null || typeof entry !== "object") continue;
+    const record = entry;
+    const entryCurrency = stringOrNull(record.unit) ?? stringOrNull(record.currency) ?? currency;
+    if (entryCurrency.toUpperCase() !== currency) continue;
+    total += numberOrNull(record.balance_usd ?? record.balance ?? record.amount) ?? 0;
+  }
+  return total;
+}
+function parseSchemeBalance(scheme, json) {
+  const body = json !== null && typeof json === "object" ? json : {};
+  if (scheme === "deepseek") {
+    const infos = Array.isArray(body.balance_infos) ? body.balance_infos : [];
+    const info = infos.find((entry) => entry?.currency === "CNY") ?? infos[0];
+    const total = numberOrNull(info?.total_balance);
+    if (total === null) throw new AccountError("invalid-response", "DeepSeek balance response is missing total_balance");
+    return {
+      currency: stringOrNull(info?.currency),
+      total,
+      used: null,
+      limit: null,
+      granted: numberOrNull(info?.granted_balance),
+      toppedUp: numberOrNull(info?.topped_up_balance),
+      available: typeof body.is_available === "boolean" ? body.is_available : total > 0
+    };
+  }
+  if (scheme === "moonshot") {
+    const data = body.data ?? {};
+    const available = numberOrNull(data.available_balance);
+    if (available === null) throw new AccountError("invalid-response", "Moonshot balance response is missing available_balance");
+    return {
+      currency: stringOrNull(data.currency),
+      total: available,
+      used: null,
+      limit: null,
+      granted: numberOrNull(data.voucher_balance),
+      toppedUp: numberOrNull(data.cash_balance),
+      available: available > 0
+    };
+  }
+  if (scheme === "zai") {
+    const data = body.data ?? {};
+    const total = numberOrNull(data.total_balance) ?? numberOrNull(data.available_balance);
+    if (total === null) throw new AccountError("invalid-response", "Z.ai balance response is missing total_balance");
+    return {
+      currency: stringOrNull(data.currency),
+      total,
+      used: null,
+      limit: null,
+      granted: null,
+      toppedUp: numberOrNull(data.available_balance),
+      available: total > 0
+    };
+  }
+  if (scheme === "openrouter") {
+    const totalCredits = numberOrNull(body.data?.total_credits);
+    const totalUsage = numberOrNull(body.data?.total_usage);
+    if (totalCredits === null || totalUsage === null) {
+      throw new AccountError("invalid-response", "OpenRouter credits response is missing totals");
+    }
+    const remaining2 = totalCredits - totalUsage;
+    return {
+      currency: "USD",
+      total: remaining2,
+      used: totalUsage,
+      limit: totalCredits,
+      granted: null,
+      toppedUp: null,
+      available: remaining2 > 0
+    };
+  }
+  const currency = stringOrNull(body.unit)?.toUpperCase() ?? null;
+  const paid = numberOrNull(body.paid_balance);
+  if (currency === null || paid === null) throw new AccountError("invalid-response", "OrcaRouter wallet response is missing unit or paid_balance");
+  const remaining = paid + walletTotal(body.free_credit, currency) + walletTotal(body.promo_credits, currency);
+  return {
+    currency,
+    total: remaining,
+    used: null,
+    limit: null,
+    granted: null,
+    toppedUp: null,
+    available: remaining > 0
+  };
+}
+function parseGenericBalance(json, mapping) {
+  const balance = emptyBalance(stringOrNull(pointerValue(json, mapping.currency)));
+  balance.total = numberOrNull(pointerValue(json, mapping.total));
+  balance.used = numberOrNull(pointerValue(json, mapping.used));
+  balance.limit = numberOrNull(pointerValue(json, mapping.limit));
+  balance.granted = numberOrNull(pointerValue(json, mapping.granted));
+  balance.toppedUp = numberOrNull(pointerValue(json, mapping.toppedUp));
+  const available = pointerValue(json, mapping.available);
+  balance.available = typeof available === "boolean" ? available : balance.total !== null ? balance.total > 0 : null;
+  if (balance.total === null && balance.used === null && balance.limit === null) {
+    throw new AccountError("invalid-response", "generic balance mapping produced no numeric value");
+  }
+  return balance;
+}
+function windowOf(json, index, mapping) {
+  const id = stringOrNull(pointerValue(json, mapping.fields.id)) ?? `window-${index + 1}`;
+  const label = stringOrNull(pointerValue(json, mapping.fields.label)) ?? id;
+  return {
+    id,
+    label,
+    used: numberOrNull(pointerValue(json, mapping.fields.used)),
+    limit: numberOrNull(pointerValue(json, mapping.fields.limit)),
+    remaining: numberOrNull(pointerValue(json, mapping.fields.remaining)),
+    unit: stringOrNull(pointerValue(json, mapping.fields.unit)),
+    resetAt: stringOrNull(pointerValue(json, mapping.fields.resetAt))
+  };
+}
+function parseGenericSubscription(json, mapping) {
+  const windows = pointerValue(json, mapping.windows);
+  if (!Array.isArray(windows)) throw new AccountError("invalid-response", "generic subscription mapping did not select a window array");
+  return {
+    plan: stringOrNull(pointerValue(json, mapping.plan)),
+    windows: windows.map((entry, index) => windowOf(entry, index, mapping))
+  };
+}
+
+// src/host/accounts/registry.ts
+var MIN_REFRESH_MS = 6e4;
+function clampRefresh(value, fallback) {
+  return Number.isFinite(value) && value >= MIN_REFRESH_MS ? Math.floor(value) : fallback;
+}
+function emptyAccount(definition) {
+  return {
+    id: definition.id,
+    displayName: definition.displayName,
+    mode: definition.mode,
+    adapter: definition.adapter,
+    configured: false,
+    status: "unconfigured",
+    stale: false,
+    fetchedAt: null,
+    lastAttemptAt: null,
+    lastError: null,
+    source: { kind: definition.adapter === "host" ? "host-service" : definition.adapter === "http" ? "http" : "unsupported", ...definition.baseURL === void 0 ? {} : { origin: definition.baseURL } }
+  };
+}
+function walletNumber(value) {
+  return numberOrNull(value);
+}
+function balanceOfWallets(wallets, bonus) {
+  const sums = /* @__PURE__ */ new Map();
+  const add = (entries, key) => {
+    for (const entry2 of entries) {
+      if (entry2 === null || typeof entry2 !== "object") continue;
+      const record = entry2;
+      const currency2 = stringOrNull(record.currency) ?? "CNY";
+      const amount = walletNumber(record.balance) ?? 0;
+      const current = sums.get(currency2) ?? { total: 0, granted: 0 };
+      current[key] += amount;
+      sums.set(currency2, current);
+    }
+  };
+  add(wallets, "total");
+  add(bonus, "granted");
+  const entry = [...sums.entries()].find(([currency2]) => currency2 === "CNY") ?? [...sums.entries()][0];
+  if (entry === void 0) return { currency: null, total: null, used: null, limit: null, granted: null, toppedUp: null, available: null };
+  const [currency, value] = entry;
+  const total = value.total + value.granted;
+  return {
+    currency,
+    total,
+    used: null,
+    limit: null,
+    granted: value.granted,
+    toppedUp: value.total,
+    available: total > 0
+  };
+}
+var AccountRegistry = class {
+  options;
+  now;
+  views = /* @__PURE__ */ new Map();
+  definitions = [];
+  refreshing = false;
+  disposed = false;
+  timer;
+  firstTimer;
+  constructor(options) {
+    this.options = options;
+    this.now = options.now ?? Date.now;
+    this.options.config = {
+      ...options.config,
+      refreshMs: clampRefresh(options.config.refreshMs, 6e5)
+    };
+  }
+  /** Load the previous snapshot so the panel has data before the first query. */
+  async loadCache() {
+    try {
+      const text = await readFile(path.join(this.options.dataDir, "accounts.json"), "utf8");
+      const parsed = JSON.parse(text);
+      if (parsed.version !== 1 || !Array.isArray(parsed.accounts)) return;
+      for (const account of parsed.accounts) {
+        if (account !== null && typeof account === "object" && typeof account.id === "string") {
+          this.views.set(account.id, { ...account, stale: account.fetchedAt !== null });
+        }
+      }
+    } catch {
+    }
+  }
+  /** Whether a refresh cycle is running. */
+  isRefreshing() {
+    return this.refreshing;
+  }
+  /** The wire snapshot. */
+  snapshot() {
+    const order = this.definitions.length > 0 ? this.definitions.map((entry) => entry.id) : [...this.views.keys()];
+    const accounts = order.map((id) => this.views.get(id)).filter((entry) => entry !== void 0);
+    for (const view of this.views.values()) if (!order.includes(view.id)) accounts.push(view);
+    return {
+      schemaVersion: 1,
+      generatedAt: this.now(),
+      refreshMs: this.options.config.refreshMs,
+      refreshing: this.refreshing,
+      accounts
+    };
+  }
+  /** Refresh every account once; concurrent calls share the running cycle. */
+  async refresh() {
+    if (this.refreshing || this.disposed) return;
+    this.refreshing = true;
+    try {
+      const definitions = await this.discover();
+      this.definitions = definitions;
+      for (const definition of definitions) {
+        if (!this.views.has(definition.id)) this.views.set(definition.id, emptyAccount(definition));
+      }
+      await Promise.all(definitions.map((definition) => this.queryOne(definition)));
+      await this.persist();
+    } finally {
+      this.refreshing = false;
+    }
+  }
+  /** Start the initial and periodic refresh; returns its disposer. */
+  start() {
+    const schedule = () => {
+      if (this.disposed) return;
+      void this.refresh();
+    };
+    this.firstTimer = setTimeout(schedule, 1500);
+    this.timer = setInterval(schedule, this.options.config.refreshMs);
+    return () => {
+      this.disposed = true;
+      if (this.firstTimer !== void 0) clearTimeout(this.firstTimer);
+      if (this.timer !== void 0) clearInterval(this.timer);
+    };
+  }
+  async discover() {
+    const definitions = [];
+    const explicit = new Map(this.options.config.monitors.map((monitor) => [monitor.id, monitor]));
+    if (this.options.services.get("deepseekAccount") !== void 0) {
+      definitions.push({
+        id: "deepseek-account",
+        displayName: "DeepSeek Account",
+        mode: "balance",
+        adapter: "host"
+      });
+    }
+    const settings = this.options.services.get("settings");
+    if (settings !== void 0 && typeof settings.describe === "function") {
+      let descriptors = [];
+      try {
+        descriptors = settings.describe({ redactSecrets: true });
+      } catch {
+        descriptors = [];
+      }
+      const piAI = descriptors.find((entry) => String(entry.ns).endsWith("llm-pi-ai"));
+      const providers = piAI?.value !== null && typeof piAI?.value === "object" ? piAI.value.providers : void 0;
+      if (providers !== null && typeof providers === "object" && !Array.isArray(providers)) {
+        for (const [id, raw] of Object.entries(providers)) {
+          if (raw === null || typeof raw !== "object") continue;
+          const profile = raw;
+          const baseURL = stringOrNull(profile.baseURL) ?? void 0;
+          const credentialRef = stringOrNull(profile.apiKeyEnv) ?? void 0;
+          const displayName = stringOrNull(profile.displayName) ?? id;
+          const scheme = schemeForProvider(id, baseURL);
+          definitions.push(
+            scheme === null ? {
+              id,
+              displayName,
+              mode: "balance",
+              adapter: "unsupported",
+              baseURL,
+              credentialRef,
+              reason: "no public balance interface"
+            } : { id, displayName, mode: "balance", adapter: "http", baseURL, credentialRef, scheme }
+          );
+        }
+      }
+      const deepseek = descriptors.find((entry) => String(entry.ns).endsWith("llm-deepseek"));
+      if (deepseek !== void 0) {
+        const value = deepseek.value !== null && typeof deepseek.value === "object" ? deepseek.value : {};
+        definitions.push({
+          id: "deepseek-api",
+          displayName: "DeepSeek API",
+          mode: "balance",
+          adapter: "http",
+          baseURL: stringOrNull(value.baseURL) ?? "https://api.deepseek.com",
+          credentialRef: stringOrNull(value.apiKeyEnv) ?? "DEEPSEEK_API_KEY",
+          scheme: "deepseek"
+        });
+      }
+    }
+    for (const monitor of explicit.values()) {
+      const index = definitions.findIndex((entry) => entry.id === monitor.id);
+      const definition = {
+        id: monitor.id,
+        displayName: monitor.displayName ?? monitor.id,
+        mode: monitor.mode,
+        adapter: "http",
+        baseURL: monitor.baseURL,
+        credentialRef: monitor.credentialRef,
+        scheme: monitor.scheme ?? schemeForProvider(monitor.id, monitor.baseURL) ?? void 0,
+        headers: monitor.headers,
+        balance: monitor.balance,
+        subscription: monitor.subscription,
+        timeoutMs: monitor.timeoutMs
+      };
+      if (index >= 0) definitions[index] = definition;
+      else definitions.push(definition);
+    }
+    const seen = /* @__PURE__ */ new Set();
+    return definitions.filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    });
+  }
+  async queryOne(definition) {
+    const previous = this.views.get(definition.id);
+    const now = this.now();
+    const base = previous ?? emptyAccount(definition);
+    const started = { ...base, adapter: definition.adapter, mode: definition.mode, lastAttemptAt: now };
+    try {
+      const outcome = await this.query(definition);
+      if (outcome === "unconfigured") {
+        this.views.set(definition.id, {
+          ...started,
+          configured: false,
+          status: "unconfigured",
+          stale: false,
+          lastError: null
+        });
+        return;
+      }
+      if (outcome === "unsupported") {
+        this.views.set(definition.id, {
+          ...started,
+          configured: false,
+          status: "unsupported",
+          stale: false,
+          lastError: definition.reason ?? null
+        });
+        return;
+      }
+      this.views.set(definition.id, {
+        ...started,
+        configured: true,
+        status: "ok",
+        stale: false,
+        fetchedAt: now,
+        lastError: null,
+        ...outcome
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.log?.(`account ${definition.id} refresh failed: ${message}`);
+      this.views.set(definition.id, {
+        ...started,
+        status: "error",
+        stale: previous?.fetchedAt !== null && previous?.fetchedAt !== void 0,
+        lastError: message
+      });
+    }
+  }
+  async query(definition) {
+    if (definition.adapter === "unsupported") return "unsupported";
+    if (definition.adapter === "host") return this.queryHost();
+    return this.queryHTTP(definition);
+  }
+  async queryHost() {
+    const service = this.options.services.get("deepseekAccount");
+    if (service === void 0) return "unsupported";
+    const state = await service.getState();
+    if (state?.status !== "credential-stored") return "unconfigured";
+    const balance = await service.getBalance({
+      version: this.options.version,
+      locale: "en",
+      timezoneOffsetSeconds: -(/* @__PURE__ */ new Date()).getTimezoneOffset() * 60
+    });
+    if (balance === null) return "unconfigured";
+    if (balance.status !== "ready") throw new AccountError("account-failed", "the DeepSeek account balance query failed");
+    return { balance: balanceOfWallets(balance.value ?? [], balance.bonusWallets ?? []) };
+  }
+  async queryHTTP(definition) {
+    if (definition.baseURL === void 0 || definition.baseURL === "") {
+      throw new AccountError("invalid-config", "account monitor has no baseURL");
+    }
+    const credentials = this.options.services.get("credentials");
+    let apiKey;
+    if (definition.credentialRef !== void 0 && definition.credentialRef !== "") {
+      if (credentials === void 0) return "unconfigured";
+      const info = await credentials.describe(definition.credentialRef);
+      if (!info.configured) return "unconfigured";
+      const resolved = await credentials.resolve(definition.credentialRef);
+      if (resolved === void 0 || resolved.value === "") return "unconfigured";
+      apiKey = resolved.value;
+    }
+    const headers = { ...definition.headers ?? {} };
+    if (apiKey !== void 0) headers.authorization = `Bearer ${apiKey}`;
+    if (definition.mode === "subscription") {
+      if (definition.subscription === void 0) return "unsupported";
+      const json2 = await fetchJson(definition.baseURL, { headers, timeoutMs: definition.timeoutMs ?? this.options.config.timeoutMs }, this.options.fetchImpl);
+      return { subscription: parseGenericSubscription(json2, definition.subscription) };
+    }
+    const url = definition.scheme === void 0 ? definition.baseURL : schemeURL(definition.scheme, definition.baseURL);
+    const json = await fetchJson(url, { headers, timeoutMs: definition.timeoutMs ?? this.options.config.timeoutMs }, this.options.fetchImpl);
+    const balance = definition.scheme === void 0 ? definition.balance === void 0 ? void 0 : parseGenericBalance(json, definition.balance) : parseSchemeBalance(definition.scheme, json);
+    if (balance === void 0) return "unsupported";
+    return { balance };
+  }
+  async persist() {
+    const file = path.join(this.options.dataDir, "accounts.json");
+    const payload = { version: 1, updatedAt: this.now(), accounts: this.snapshot().accounts };
+    try {
+      await mkdir(this.options.dataDir, { recursive: true });
+      await writeFile(file, `${JSON.stringify(payload)}
+`, "utf8");
+    } catch (error) {
+      this.options.log?.(`account cache could not be written: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+};
+function emptyAccountsPayload(refreshMs = 6e5) {
+  return { schemaVersion: 1, generatedAt: Date.now(), refreshMs, refreshing: false, accounts: [] };
+}
+function readMonitors(value) {
+  if (!Array.isArray(value)) return [];
+  const monitors = [];
+  for (const raw of value) {
+    if (raw === null || typeof raw !== "object") continue;
+    const record = raw;
+    const id = stringOrNull(record.id);
+    const baseURL = stringOrNull(record.baseURL);
+    const mode = record.mode === "subscription" ? "subscription" : "balance";
+    if (id === null || baseURL === null) continue;
+    monitors.push({
+      id,
+      mode,
+      baseURL,
+      ...stringOrNull(record.displayName) === null ? {} : { displayName: stringOrNull(record.displayName) },
+      ...stringOrNull(record.credentialRef) === null ? {} : { credentialRef: stringOrNull(record.credentialRef) },
+      ...record.scheme === "deepseek" || record.scheme === "moonshot" || record.scheme === "zai" || record.scheme === "openrouter" || record.scheme === "orcarouter" ? { scheme: record.scheme } : {},
+      ...record.headers !== null && typeof record.headers === "object" ? { headers: record.headers } : {},
+      ...record.balance !== null && typeof record.balance === "object" ? { balance: record.balance } : {},
+      ...record.subscription !== null && typeof record.subscription === "object" ? { subscription: record.subscription } : {},
+      ...numberOrNull(record.timeoutMs) === null ? {} : { timeoutMs: numberOrNull(record.timeoutMs) }
+    });
+  }
+  return monitors;
+}
+
+// src/host/cost.ts
+function createCostAccumulator() {
+  return { pricedCalls: 0, unpricedCalls: 0, amounts: /* @__PURE__ */ new Map(), ruleIds: /* @__PURE__ */ new Set() };
+}
+function applyCostSample(accumulator, sample, direction = 1) {
+  if (sample.counted !== true) return;
+  if (sample.complete !== true) {
+    accumulator.unpricedCalls = Math.max(0, accumulator.unpricedCalls + direction);
+    return;
+  }
+  accumulator.pricedCalls = Math.max(0, accumulator.pricedCalls + direction);
+  accumulator.ruleIds.add(sample.ruleId);
+  const previous = accumulator.amounts.get(sample.currency) ?? 0;
+  const next = previous + direction * sample.amount;
+  if (next === 0) accumulator.amounts.delete(sample.currency);
+  else accumulator.amounts.set(sample.currency, next);
+}
+function mergeCost(into, from) {
+  into.pricedCalls += from.pricedCalls;
+  into.unpricedCalls += from.unpricedCalls;
+  for (const [currency, amount] of from.amounts) {
+    const next = (into.amounts.get(currency) ?? 0) + amount;
+    if (next === 0) into.amounts.delete(currency);
+    else into.amounts.set(currency, next);
+  }
+  if (from.pricedCalls > 0) for (const ruleId of from.ruleIds) into.ruleIds.add(ruleId);
+  return into;
+}
+function roundAmount(amount) {
+  return Math.round(amount * 1e6) / 1e6;
+}
+function renderCost(accumulator) {
+  const complete = accumulator.unpricedCalls === 0 && accumulator.amounts.size <= 1;
+  const entry = complete ? [...accumulator.amounts.entries()][0] : void 0;
+  return {
+    amount: complete ? entry === void 0 ? 0 : roundAmount(entry[1]) : null,
+    currency: entry?.[0] ?? null,
+    complete,
+    pricedCalls: accumulator.pricedCalls,
+    unpricedCalls: accumulator.unpricedCalls,
+    ruleIds: [...accumulator.ruleIds].sort()
+  };
+}
+function renderSampleCost(sample) {
+  if (sample.counted !== true) {
+    return { amount: 0, currency: null, complete: true, pricedCalls: 0, unpricedCalls: 0, ruleIds: [] };
+  }
+  if (sample.complete !== true) {
+    return { amount: null, currency: null, complete: false, pricedCalls: 0, unpricedCalls: 1, ruleIds: [] };
+  }
+  return {
+    amount: roundAmount(sample.amount),
+    currency: sample.currency,
+    complete: true,
+    pricedCalls: 1,
+    unpricedCalls: 0,
+    ruleIds: [sample.ruleId]
+  };
+}
 
 // src/host/usage.ts
 function count(value) {
@@ -323,6 +1088,135 @@ function sanitizeSample(raw) {
   };
 }
 
+// src/host/budgets.ts
+var WARN_AT = 80;
+function resolveBudgetConfig(value) {
+  const config = value !== null && typeof value === "object" ? value : {};
+  const currency = typeof config.currency === "string" && /^[A-Z]{3}$/.test(config.currency) ? config.currency : "USD";
+  const limit = (raw) => {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+  return { currency, daily: limit(config.daily), monthly: limit(config.monthly) };
+}
+function windowOf2(limit, currency, accumulator) {
+  const rendered = renderCost(accumulator);
+  const sameCurrency = rendered.currency === null || rendered.currency === currency;
+  const costComplete = rendered.complete && sameCurrency;
+  const spend = rendered.amount;
+  const percent = limit !== null && spend !== null ? Math.round(spend / limit * 1e3) / 10 : null;
+  if (!costComplete) {
+    return { limit, currency, spend: null, percent: null, costComplete, level: null };
+  }
+  const level = limit !== null && percent !== null ? percent >= 100 ? "exceeded" : percent >= WARN_AT ? "warn" : "ok" : null;
+  return {
+    limit,
+    currency,
+    spend,
+    percent,
+    costComplete,
+    level
+  };
+}
+function budgetState(store, config, now = Date.now()) {
+  const day = dayKey(now);
+  const month = day.slice(0, 7);
+  const daily = store.costBetween(day, day);
+  const monthly = store.costBetween(`${month}-01`, day);
+  return {
+    currency: config.currency,
+    daily: windowOf2(config.daily, config.currency, daily),
+    monthly: windowOf2(config.monthly, config.currency, monthly)
+  };
+}
+
+// src/host/backfill.ts
+var Backfill = class {
+  options;
+  running = false;
+  status = {
+    state: "idle",
+    sessions: 0,
+    events: 0,
+    skipped: 0,
+    inherited: 0,
+    startedAt: null,
+    finishedAt: null,
+    error: null
+  };
+  constructor(options) {
+    this.options = options;
+  }
+  /** Current progress (a detached copy). */
+  getStatus() {
+    return { ...this.status };
+  }
+  publish(patch) {
+    this.status = { ...this.status, ...patch };
+    this.options.onChange?.(this.getStatus());
+  }
+  /** Run one scan; concurrent calls are no-ops. */
+  async run() {
+    if (this.running) return;
+    this.running = true;
+    const now = this.options.now ?? Date.now;
+    this.publish({ state: "running", startedAt: now(), finishedAt: null, error: null, sessions: 0, events: 0, skipped: 0, inherited: 0 });
+    try {
+      const sessions = await this.options.persistence.list();
+      let cursor = 0;
+      let events = 0;
+      while (cursor < sessions.length) {
+        const batch = sessions.slice(cursor, cursor + 8);
+        cursor += batch.length;
+        await Promise.all(batch.map((session) => this.scanOne(session)));
+        events = this.status.events;
+        this.publish({ events });
+      }
+      this.publish({ state: "done", events, finishedAt: now() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.log?.(`historical scan failed: ${message}`);
+      this.publish({ state: "error", error: message, finishedAt: now() });
+    } finally {
+      this.running = false;
+    }
+  }
+  async scanOne(session) {
+    const sessionId = typeof session?.header?.id === "string" ? session.header.id : "";
+    if (sessionId === "") return;
+    const last = this.options.lastSeqOf(sessionId);
+    const ahead = typeof session.eventCount === "number" ? session.eventCount > last + 1 : true;
+    if (!ahead) {
+      this.publish({ skipped: this.status.skipped + 1 });
+      return;
+    }
+    let handle;
+    try {
+      handle = await this.options.persistence.open(sessionId, "read");
+      const inherited = Number.isSafeInteger(handle.inheritedEventCount) && (handle.inheritedEventCount ?? 0) > 0 ? handle.inheritedEventCount : 0;
+      const offset = Math.max(last + 1, inherited);
+      if (inherited > 0 && inherited > last + 1) this.publish({ inherited: this.status.inherited + 1 });
+      const result = await handle.read(offset);
+      for (const event of result.events) {
+        if (Number.isFinite(event.seq) && event.seq < offset) continue;
+        this.options.onEvent(sessionId, event);
+        this.publish({ events: this.status.events + 1 });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.log?.(`historical scan skipped ${sessionId}: ${message}`);
+    } finally {
+      if (handle !== void 0) {
+        try {
+          await handle.close();
+        } catch {
+        }
+      }
+    }
+    this.publish({ sessions: this.status.sessions + 1 });
+  }
+};
+
 // src/host/collector.ts
 var Collector = class {
   routes = /* @__PURE__ */ new Map();
@@ -375,7 +1269,7 @@ var Collector = class {
 
 // src/host/config.ts
 import os from "node:os";
-import path from "node:path";
+import path2 from "node:path";
 
 // src/host/pricing.ts
 var TOKENS_PER_MILLION = 1e6;
@@ -625,11 +1519,11 @@ var DEFAULT_SESSION_LIMIT = 12;
 var DEFAULT_RECENT_LIMIT = 200;
 function dataDirectory(env = process.env, home = os.homedir()) {
   const configured = typeof env.DSH_HOME === "string" ? env.DSH_HOME.trim() : "";
-  const root = configured.length > 0 ? configured : path.join(home, ".dsh");
-  return path.join(root, "token-usage-statistic");
+  const root = configured.length > 0 ? configured : path2.join(home, ".dsh");
+  return path2.join(root, "token-usage-statistic");
 }
 function defaultDataFile(env = process.env, home = os.homedir()) {
-  return path.join(dataDirectory(env, home), "usage.jsonl");
+  return path2.join(dataDirectory(env, home), "usage.jsonl");
 }
 function stringRecord(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
@@ -648,6 +1542,9 @@ function resolveConfig(input) {
   const pricing = config.pricing !== null && typeof config.pricing === "object" ? config.pricing : {};
   const rules = Array.isArray(pricing.rules) ? pricing.rules : [];
   const providers = Array.isArray(pricing.providers) ? pricing.providers.filter((entry) => typeof entry === "string" && entry.length > 0) : [];
+  const accountsRaw = config.accounts !== null && typeof config.accounts === "object" ? config.accounts : {};
+  const accountRefresh = Number(accountsRaw.refreshMs);
+  const accountTimeout = Number(accountsRaw.timeoutMs);
   return {
     dataFile,
     refreshMs: Number.isFinite(refresh) && refresh >= 3e3 ? Math.floor(refresh) : DEFAULT_REFRESH_MS,
@@ -656,17 +1553,23 @@ function resolveConfig(input) {
     backfill: config.backfill === void 0 ? true : config.backfill !== false,
     modelAliases: { ...DEFAULT_MODEL_ALIASES, ...stringRecord(config.modelAliases) },
     pricingRules: rules,
-    pricedProviders: providers.length > 0 ? providers : [...DEFAULT_PRICED_PROVIDERS]
+    pricedProviders: providers.length > 0 ? providers : [...DEFAULT_PRICED_PROVIDERS],
+    accounts: {
+      refreshMs: Number.isFinite(accountRefresh) && accountRefresh >= 6e4 ? Math.min(Math.floor(accountRefresh), 864e5) : 6e5,
+      timeoutMs: Number.isFinite(accountTimeout) && accountTimeout >= 1e3 ? Math.min(Math.floor(accountTimeout), 6e4) : 15e3,
+      monitors: readMonitors(accountsRaw.monitors)
+    },
+    budgets: resolveBudgetConfig(config.budgets)
   };
 }
 
 // src/host/ledger.ts
-import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
-import path2 from "node:path";
+import { appendFile, mkdir as mkdir2, readFile as readFile2, stat } from "node:fs/promises";
+import path3 from "node:path";
 async function loadLedger(file) {
   let text;
   try {
-    text = await readFile(file, "utf8");
+    text = await readFile2(file, "utf8");
   } catch (error) {
     if (error?.code === "ENOENT") {
       return { records: [], bytes: 0, lines: 0, skipped: 0 };
@@ -713,7 +1616,7 @@ var LedgerWriter = class {
       return Promise.resolve(false);
     }
     const next = this.queue.then(async () => {
-      await mkdir(path2.dirname(this.file), { recursive: true });
+      await mkdir2(path3.dirname(this.file), { recursive: true });
       await appendFile(this.file, line, "utf8");
       this.bytes += Buffer.byteLength(line);
       this.writes += 1;
@@ -732,66 +1635,6 @@ var LedgerWriter = class {
     return this.error === void 0;
   }
 };
-
-// src/host/cost.ts
-function createCostAccumulator() {
-  return { pricedCalls: 0, unpricedCalls: 0, amounts: /* @__PURE__ */ new Map(), ruleIds: /* @__PURE__ */ new Set() };
-}
-function applyCostSample(accumulator, sample, direction = 1) {
-  if (sample.counted !== true) return;
-  if (sample.complete !== true) {
-    accumulator.unpricedCalls = Math.max(0, accumulator.unpricedCalls + direction);
-    return;
-  }
-  accumulator.pricedCalls = Math.max(0, accumulator.pricedCalls + direction);
-  accumulator.ruleIds.add(sample.ruleId);
-  const previous = accumulator.amounts.get(sample.currency) ?? 0;
-  const next = previous + direction * sample.amount;
-  if (next === 0) accumulator.amounts.delete(sample.currency);
-  else accumulator.amounts.set(sample.currency, next);
-}
-function mergeCost(into, from) {
-  into.pricedCalls += from.pricedCalls;
-  into.unpricedCalls += from.unpricedCalls;
-  for (const [currency, amount] of from.amounts) {
-    const next = (into.amounts.get(currency) ?? 0) + amount;
-    if (next === 0) into.amounts.delete(currency);
-    else into.amounts.set(currency, next);
-  }
-  if (from.pricedCalls > 0) for (const ruleId of from.ruleIds) into.ruleIds.add(ruleId);
-  return into;
-}
-function roundAmount(amount) {
-  return Math.round(amount * 1e6) / 1e6;
-}
-function renderCost(accumulator) {
-  const complete = accumulator.unpricedCalls === 0 && accumulator.amounts.size <= 1;
-  const entry = complete ? [...accumulator.amounts.entries()][0] : void 0;
-  return {
-    amount: complete ? entry === void 0 ? 0 : roundAmount(entry[1]) : null,
-    currency: entry?.[0] ?? null,
-    complete,
-    pricedCalls: accumulator.pricedCalls,
-    unpricedCalls: accumulator.unpricedCalls,
-    ruleIds: [...accumulator.ruleIds].sort()
-  };
-}
-function renderSampleCost(sample) {
-  if (sample.counted !== true) {
-    return { amount: 0, currency: null, complete: true, pricedCalls: 0, unpricedCalls: 0, ruleIds: [] };
-  }
-  if (sample.complete !== true) {
-    return { amount: null, currency: null, complete: false, pricedCalls: 0, unpricedCalls: 1, ruleIds: [] };
-  }
-  return {
-    amount: roundAmount(sample.amount),
-    currency: sample.currency,
-    complete: true,
-    pricedCalls: 1,
-    unpricedCalls: 0,
-    ruleIds: [sample.ruleId]
-  };
-}
 
 // src/host/store.ts
 function modelKeyOf(provider, model) {
@@ -818,6 +1661,11 @@ function resolveRange(days, now) {
   start.setDate(start.getDate() - (window - 1));
   return { days: window, from: dayKey(start.getTime()), to: dayKey(now) };
 }
+var DEFAULT_BUDGETS = {
+  currency: "USD",
+  daily: { limit: null, currency: "USD", spend: 0, percent: null, costComplete: true, level: null },
+  monthly: { limit: null, currency: "USD", spend: 0, percent: null, costComplete: true, level: null }
+};
 function totalsOf(buckets, calls) {
   return {
     calls,
@@ -977,6 +1825,58 @@ var UsageStore = class {
     const index = this.recent.findIndex((sample) => `${sample.sessionId}#${sample.sampleKey}` === key);
     if (index >= 0) this.recent.splice(index, 1);
   }
+  /** Merge the cost accumulators of every day inside the inclusive range. */
+  costBetween(from, to) {
+    const accumulator = createCostAccumulator();
+    for (const [day, entry] of this.days) {
+      if (day < from || day > to) continue;
+      mergeCost(accumulator, entry.cost);
+    }
+    return accumulator;
+  }
+  /** Flatten every day/model fold into export rows. */
+  dailyRows() {
+    const rows = [];
+    for (const [day, entry] of this.days) {
+      for (const [key, model] of entry.models) {
+        const { provider, model: modelId } = splitModelKey(key);
+        rows.push({
+          day,
+          provider,
+          model: modelId,
+          ...totalsOf(model.buckets, model.calls),
+          cost: renderCost(model.cost)
+        });
+      }
+    }
+    rows.sort(
+      (left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0) || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model)
+    );
+    return rows;
+  }
+  /** Flatten every all-time session fold into export rows. */
+  sessionRows() {
+    const rows = [];
+    for (const [sessionId, session] of this.sessions) {
+      const models = [...session.models.keys()];
+      const providers = [...new Set(models.map((key) => splitModelKey(key).provider))].sort();
+      rows.push({
+        sessionId,
+        providers,
+        models: models.sort(),
+        ...totalsOf(session.buckets, session.calls),
+        cost: renderCost(session.cost),
+        firstAt: session.firstAt,
+        lastAt: session.lastAt
+      });
+    }
+    rows.sort((left, right) => right.tokens - left.tokens || right.calls - left.calls);
+    return rows;
+  }
+  /** The pricing catalog's own version string. */
+  pricingCatalogUpdatedAt() {
+    return this.pricer.catalogUpdatedAt;
+  }
   /** Build the JSON payload the panel consumes. */
   snapshot(options = {}) {
     const now = options.now ?? Date.now();
@@ -1117,6 +2017,7 @@ var UsageStore = class {
         currency: totalCostRender.currency,
         catalogUpdatedAt: this.pricer.catalogUpdatedAt
       },
+      budgets: options.budgets ?? DEFAULT_BUDGETS,
       backfill: options.backfill ?? {
         state: "idle",
         sessions: 0,
@@ -1144,11 +2045,11 @@ function describeError(error) {
   return error instanceof Error ? error.message : String(error);
 }
 function createActivationRecorder(dataFile) {
-  const file = path3.join(path3.dirname(dataFile), "activation.json");
+  const file = path4.join(path4.dirname(dataFile), "activation.json");
   return async (patch) => {
     try {
-      await mkdir2(path3.dirname(file), { recursive: true });
-      await writeFile(file, `${JSON.stringify({ at: Date.now(), dataFile, ...patch }, null, 2)}
+      await mkdir3(path4.dirname(file), { recursive: true });
+      await writeFile2(file, `${JSON.stringify({ at: Date.now(), dataFile, ...patch }, null, 2)}
 `, "utf8");
     } catch (error) {
       warn("activation receipt could not be written:", describeError(error));
@@ -1171,6 +2072,7 @@ async function apply(ctx, config) {
   const ledger = new LedgerWriter(dataFile, { onError: (error) => warn("ledger append failed:", describeError(error)) });
   const collector = new Collector();
   let backfill;
+  let registry;
   try {
     const loaded = await loadLedger(dataFile);
     store.applyAll(loaded.records);
@@ -1200,21 +2102,42 @@ async function apply(ctx, config) {
     const handler = createHttpHandler({
       store,
       backfill: () => backfill?.getStatus() ?? IDLE_BACKFILL,
+      accounts: () => registry?.snapshot() ?? emptyAccountsPayload(settings.accounts.refreshMs),
+      budgets: (now) => budgetState(store, settings.budgets, now),
+      refreshAccounts: () => {
+        void registry?.refresh();
+      },
       refreshMs: settings.refreshMs
     });
     try {
-      scope.effect(() => server.register({ kind: "exact", path: SUMMARY_PATH, handler }));
+      for (const route of Object.values(ROUTES)) {
+        scope.effect(() => server.register({ kind: "exact", path: route, handler }));
+      }
       let origin;
       try {
         origin = server.getOrigin?.();
       } catch {
         origin = void 0;
       }
-      void recordActivation({ route: "registered", origin, paths: [SUMMARY_PATH] });
+      void recordActivation({ route: "registered", origin, paths: Object.values(ROUTES) });
     } catch (error) {
       warn("web route registration failed:", describeError(error));
       void recordActivation({ route: "failed", error: describeError(error) });
     }
+  });
+  ctx.inject(["settings", "credentials"], (scope) => {
+    registry = new AccountRegistry({
+      services: scope,
+      dataDir: path4.dirname(dataFile),
+      config: settings.accounts,
+      version: "0.3.0",
+      log: (message) => warn(message)
+    });
+    if (typeof registry.loadCache === "function") {
+      void registry.loadCache();
+    }
+    scope.effect(() => registry?.start() ?? (() => {
+    }));
   });
   if (settings.backfill) {
     ctx.inject(["sessionPersistence"], (scope) => {

@@ -6,6 +6,8 @@
  * to the browser without adapters.
  */
 
+import type { BudgetState } from './accounts/types.js'
+
 /** The four token buckets DSH providers report. */
 export interface Buckets {
   input: number
@@ -193,6 +195,7 @@ export interface UsageSnapshot {
     unpriced: number
   }
   pricing: PricingProvenance
+  budgets: BudgetState
   backfill: BackfillStatus
   config: { refreshMs: number }
 }

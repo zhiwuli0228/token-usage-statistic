@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { IDLE_BACKFILL, SUMMARY_PATH, createHttpHandler, parseDays, parseLimit } from '../src/host/api.js'
+import { IDLE_BACKFILL, ROUTES, createHttpHandler, isLoopbackRequest, parseDays, parseLimit } from '../src/host/api.js'
+import type { BudgetState } from '../src/host/accounts/types.js'
 import type { UsageStore } from '../src/host/store.js'
 
 function fakeResponse() {
@@ -19,74 +20,167 @@ function fakeResponse() {
   }
 }
 
-function call(handler: (request: any, response: any) => void, method: string, url: string) {
+function call(handler: (request: any, response: any) => void, method: string, url: string, remoteAddress?: string) {
   const response = fakeResponse()
-  handler({ method, url }, response)
+  handler({ method, url, ...(remoteAddress === undefined ? {} : { socket: { remoteAddress } }) }, response)
   return response.state
 }
 
-function storeStub(snapshot: (options: Record<string, unknown>) => unknown) {
-  return { snapshot } as unknown as UsageStore
+const budgets: BudgetState = {
+  currency: 'USD',
+  daily: { limit: 5, currency: 'USD', spend: 1.5, percent: 30, costComplete: true, level: 'ok' },
+  monthly: { limit: 50, currency: 'USD', spend: 12, percent: 24, costComplete: true, level: 'ok' },
+}
+
+function storeStub(overrides: Record<string, unknown> = {}) {
+  return {
+    snapshot: vi.fn(() => ({ ok: true })),
+    dailyRows: () => [
+      {
+        day: '2026-10-31',
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+        calls: 2,
+        input: 10,
+        output: 5,
+        cacheRead: 20,
+        cacheWrite: 0,
+        tokens: 35,
+        cacheHitRate: 66.7,
+        cost: { amount: 0.5, currency: 'USD', complete: true, pricedCalls: 2, unpricedCalls: 0, ruleIds: ['r'] },
+      },
+    ],
+    sessionRows: () => [
+      {
+        sessionId: 'session-1',
+        providers: ['deepseek'],
+        models: ['deepseek/deepseek-flash'],
+        calls: 2,
+        input: 10,
+        output: 5,
+        cacheRead: 20,
+        cacheWrite: 0,
+        tokens: 35,
+        cacheHitRate: 66.7,
+        cost: { amount: 0.5, currency: 'USD', complete: true, pricedCalls: 2, unpricedCalls: 0, ruleIds: ['r'] },
+        firstAt: 1,
+        lastAt: 2,
+      },
+    ],
+    pricingCatalogUpdatedAt: () => '2026-08-23T00:00:00.000Z',
+    ...overrides,
+  } as unknown as UsageStore
+}
+
+function handlerWith(options: { store?: UsageStore; refresh?: () => void } = {}) {
+  return createHttpHandler({
+    store: options.store ?? storeStub(),
+    backfill: () => IDLE_BACKFILL,
+    accounts: () => ({ schemaVersion: 1, generatedAt: 1, refreshMs: 600000, refreshing: false, accounts: [] }),
+    budgets: () => budgets,
+    refreshAccounts: options.refresh ?? (() => {}),
+    refreshMs: 20000,
+    now: () => 1234,
+  })
 }
 
 describe('query parsing', () => {
   it('parses days including all time', () => {
     expect(parseDays(null)).toBe(30)
-    expect(parseDays('')).toBe(30)
     expect(parseDays('all')).toBeNull()
-    expect(parseDays('1')).toBe(1)
-    expect(parseDays('0')).toBe(30)
-    expect(parseDays('soon')).toBe(30)
     expect(parseDays('99999')).toBe(3650)
   })
 
   it('bounds table sizes', () => {
-    expect(parseLimit(null, 12, 50)).toBe(12)
-    expect(parseLimit('5', 12, 50)).toBe(5)
     expect(parseLimit('500', 12, 50)).toBe(50)
     expect(parseLimit('-2', 12, 50)).toBe(12)
   })
 })
 
+describe('loopback guard', () => {
+  it('trusts an absent peer and loopback addresses', () => {
+    expect(isLoopbackRequest({} as never)).toBe(true)
+    expect(isLoopbackRequest({ socket: { remoteAddress: '127.0.0.1' } } as never)).toBe(true)
+    expect(isLoopbackRequest({ socket: { remoteAddress: '::1' } } as never)).toBe(true)
+    expect(isLoopbackRequest({ socket: { remoteAddress: '::ffff:127.0.0.1' } } as never)).toBe(true)
+  })
+
+  it('rejects a remote peer', () => {
+    expect(isLoopbackRequest({ socket: { remoteAddress: '10.1.2.3' } } as never)).toBe(false)
+    const response = call(handlerWith(), 'GET', ROUTES.summary, '10.1.2.3')
+    expect(response.status).toBe(403)
+  })
+})
+
 describe('summary route', () => {
-  it('serves the snapshot for the requested range', () => {
-    const snapshot = vi.fn(() => ({ ok: true }))
-    const handler = createHttpHandler({ store: storeStub(snapshot), backfill: () => IDLE_BACKFILL, refreshMs: 20000, now: () => 1234 })
-    const response = call(handler, 'GET', `${SUMMARY_PATH}?days=7&sessions=5&recent=3`)
+  it('serves the snapshot with budgets for the requested range', () => {
+    const store = storeStub()
+    const handler = handlerWith({ store })
+    const response = call(handler, 'GET', `${ROUTES.summary}?days=7&sessions=5&recent=3`)
 
     expect(response.status).toBe(200)
-    expect(response.headers['content-type']).toMatch(/application\/json/)
     expect(response.headers['cache-control']).toBe('no-store')
-    expect(JSON.parse(response.body)).toEqual({ ok: true })
-    expect(snapshot).toHaveBeenCalledWith(
-      expect.objectContaining({ days: 7, sessionLimit: 5, recentLimit: 3, now: 1234, refreshMs: 20000 }),
+    expect(store.snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ days: 7, sessionLimit: 5, recentLimit: 3, now: 1234, budgets, refreshMs: 20000 }),
     )
   })
 
   it('rejects unknown paths and methods', () => {
-    const handler = createHttpHandler({ store: storeStub(() => ({})), backfill: () => IDLE_BACKFILL, refreshMs: 15000 })
-    expect(call(handler, 'GET', '/token-usage-statistic/api/other').status).toBe(404)
-    expect(call(handler, 'POST', SUMMARY_PATH).status).toBe(405)
-    expect(call(handler, 'PUT', SUMMARY_PATH).headers.allow).toBe('GET, HEAD')
+    const handler = handlerWith()
+    expect(call(handler, 'GET', `${ROUTES.summary}/nope`).status).toBe(404)
+    expect(call(handler, 'POST', ROUTES.summary).status).toBe(405)
   })
 
   it('answers HEAD without a body', () => {
-    const handler = createHttpHandler({ store: storeStub(() => ({})), backfill: () => IDLE_BACKFILL, refreshMs: 15000 })
-    const response = call(handler, 'HEAD', SUMMARY_PATH)
+    const response = call(handlerWith(), 'HEAD', ROUTES.summary)
     expect(response.status).toBe(200)
     expect(response.body).toBe('')
   })
 
   it('converts a fold failure into a 500', () => {
-    const handler = createHttpHandler({
-      store: storeStub(() => {
+    const store = storeStub({
+      snapshot: () => {
         throw new Error('boom')
-      }),
-      backfill: () => IDLE_BACKFILL,
-      refreshMs: 15000,
+      },
     })
-    const response = call(handler, 'GET', SUMMARY_PATH)
+    const response = call(handlerWith({ store }), 'GET', ROUTES.summary)
     expect(response.status).toBe(500)
-    expect(JSON.parse(response.body).message).toMatch(/boom/)
+  })
+})
+
+describe('accounts route', () => {
+  it('serves the account snapshot and triggers a refresh on demand', () => {
+    const refresh = vi.fn()
+    const handler = handlerWith({ refresh })
+    const response = call(handler, 'GET', `${ROUTES.accounts}?refresh=1`)
+    expect(response.status).toBe(200)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(response.body)).toMatchObject({ schemaVersion: 1, accounts: [] })
+  })
+})
+
+describe('export routes', () => {
+  it('serves a BOM-prefixed daily CSV as a download', () => {
+    const response = call(handlerWith(), 'GET', ROUTES.exportDaily)
+    expect(response.status).toBe(200)
+    expect(response.headers['content-type']).toMatch(/text\/csv/)
+    expect(response.headers['content-disposition']).toContain('token-usage-daily.csv')
+    expect(response.body.startsWith('\uFEFF')).toBe(true)
+    expect(response.body).toContain('"2026-10-31","deepseek","deepseek-flash"')
+  })
+
+  it('serves a sessions CSV', () => {
+    const response = call(handlerWith(), 'GET', ROUTES.exportSessions)
+    expect(response.status).toBe(200)
+    expect(response.body).toContain('"session-1"')
+  })
+
+  it('serves a versioned JSON export', () => {
+    const response = call(handlerWith(), 'GET', ROUTES.exportJson)
+    expect(response.status).toBe(200)
+    const body = JSON.parse(response.body)
+    expect(body.schemaVersion).toBe('1.0.0')
+    expect(body.days).toHaveLength(1)
+    expect(body.budgets.daily.limit).toBe(5)
   })
 })

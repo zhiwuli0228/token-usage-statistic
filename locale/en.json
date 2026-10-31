@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Token Usage Statistic",
-    "description": "Records the token usage of every model call in this Harness and shows totals by model, day and session in a sidebar panel."
+    "description": "Records every model call's token usage and estimated cost, backfills history, shows provider balances and quotas with daily/monthly budgets, and exports secret-free reports in a sidebar panel."
   }
 }

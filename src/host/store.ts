@@ -13,6 +13,7 @@
  */
 
 import { applyCostSample, cloneCost, createCostAccumulator, mergeCost, renderCost, renderSampleCost } from './cost.js'
+import type { BudgetState } from './accounts/types.js'
 import type { Pricer } from './pricing.js'
 import type {
   BackfillStatus,
@@ -101,6 +102,12 @@ export function resolveRange(days: number | null, now: number): { days: number; 
   return { days: window, from: dayKey(start.getTime()), to: dayKey(now) }
 }
 
+const DEFAULT_BUDGETS: BudgetState = {
+  currency: 'USD',
+  daily: { limit: null, currency: 'USD', spend: 0, percent: null, costComplete: true, level: null },
+  monthly: { limit: null, currency: 'USD', spend: 0, percent: null, costComplete: true, level: null },
+}
+
 function totalsOf(buckets: Buckets, calls: number): { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; tokens: number; cacheHitRate: number | null } {
   return {
     calls,
@@ -119,6 +126,7 @@ export interface SnapshotOptions {
   recentLimit?: number
   now?: number
   backfill?: BackfillStatus
+  budgets?: BudgetState
   refreshMs?: number
 }
 
@@ -302,6 +310,91 @@ export class UsageStore {
     if (index >= 0) this.recent.splice(index, 1)
   }
 
+  /** Merge the cost accumulators of every day inside the inclusive range. */
+  costBetween(from: string, to: string): CostAccumulator {
+    const accumulator = createCostAccumulator()
+    for (const [day, entry] of this.days) {
+      if (day < from || day > to) continue
+      mergeCost(accumulator, entry.cost)
+    }
+    return accumulator
+  }
+
+  /** Flatten every day/model fold into export rows. */
+  dailyRows(): Array<{
+    day: string
+    provider: string
+    model: string
+    calls: number
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    tokens: number
+    cacheHitRate: number | null
+    cost: ReturnType<typeof renderCost>
+  }> {
+    const rows: ReturnType<UsageStore['dailyRows']> = []
+    for (const [day, entry] of this.days) {
+      for (const [key, model] of entry.models) {
+        const { provider, model: modelId } = splitModelKey(key)
+        rows.push({
+          day,
+          provider,
+          model: modelId,
+          ...totalsOf(model.buckets, model.calls),
+          cost: renderCost(model.cost),
+        })
+      }
+    }
+    rows.sort(
+      (left, right) =>
+        (left.day < right.day ? 1 : left.day > right.day ? -1 : 0) ||
+        left.provider.localeCompare(right.provider) ||
+        left.model.localeCompare(right.model),
+    )
+    return rows
+  }
+
+  /** Flatten every all-time session fold into export rows. */
+  sessionRows(): Array<{
+    sessionId: string
+    providers: string[]
+    models: string[]
+    calls: number
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    tokens: number
+    cacheHitRate: number | null
+    cost: ReturnType<typeof renderCost>
+    firstAt: number
+    lastAt: number
+  }> {
+    const rows: ReturnType<UsageStore['sessionRows']> = []
+    for (const [sessionId, session] of this.sessions) {
+      const models = [...session.models.keys()]
+      const providers = [...new Set(models.map((key) => splitModelKey(key).provider))].sort()
+      rows.push({
+        sessionId,
+        providers,
+        models: models.sort(),
+        ...totalsOf(session.buckets, session.calls),
+        cost: renderCost(session.cost),
+        firstAt: session.firstAt,
+        lastAt: session.lastAt,
+      })
+    }
+    rows.sort((left, right) => right.tokens - left.tokens || right.calls - left.calls)
+    return rows
+  }
+
+  /** The pricing catalog's own version string. */
+  pricingCatalogUpdatedAt(): string {
+    return this.pricer.catalogUpdatedAt
+  }
+
   /** Build the JSON payload the panel consumes. */
   snapshot(options: SnapshotOptions = {}): UsageSnapshot {
     const now = options.now ?? Date.now()
@@ -457,6 +550,7 @@ export class UsageStore {
         currency: totalCostRender.currency,
         catalogUpdatedAt: this.pricer.catalogUpdatedAt,
       },
+      budgets: options.budgets ?? DEFAULT_BUDGETS,
       backfill: options.backfill ?? {
         state: 'idle',
         sessions: 0,

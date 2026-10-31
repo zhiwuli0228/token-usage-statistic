@@ -6,6 +6,9 @@
     title: "Token usage",
     subtitle: "Every model call recorded in this Harness, aggregated by provider, model, day and session.",
     badge: "local",
+    tabUsage: "Usage",
+    tabAccounts: "Accounts",
+    tabExport: "Export",
     rangeToday: "Today",
     range7: "7 days",
     range30: "30 days",
@@ -40,14 +43,48 @@
     backfillRunning: "Scanning historical sessions\u2026",
     backfillDone: "History scan finished",
     backfillError: "History scan stopped",
-    scanSkipped: "unchanged",
     sourceNote: "Source: provider-reported usage in committed session events. Data stays on this machine.",
-    estimateNote: "Cost is an estimate: each sample is priced with the rule effective at its event time."
+    estimateNote: "Cost is an estimate: each sample is priced with the rule effective at its event time.",
+    budgetDaily: "Today",
+    budgetMonthly: "This month",
+    budgetIncomplete: "cost incomplete",
+    budgetNoLimit: "No limit",
+    accountsEmpty: "No account sources detected. Sign in to DeepSeek or configure an llm-pi-ai provider.",
+    accountsRefresh: "Refresh accounts",
+    accountsUpdated: "Accounts updated",
+    accountsLoading: "Loading accounts\u2026",
+    accountsError: "Account query failed",
+    accountsNote: "Balances are queried by the Host only; credentials never reach this page.",
+    accountsBalance: "Balance",
+    accountsUsed: "Used",
+    accountsLimit: "Limit",
+    accountsGranted: "Granted",
+    accountsToppedUp: "Topped up",
+    accountsPlan: "Plan",
+    accountsNoQuota: "No quota windows reported",
+    accountsStatusOk: "live",
+    accountsStatusUnconfigured: "not signed in",
+    accountsStatusUnsupported: "no public interface",
+    accountsStatusError: "query failed",
+    accountsStale: "stale",
+    accountsWindowRemaining: "left",
+    accountsSignInHint: "Sign in to the DeepSeek account in DSH, or set the provider credential, then refresh.",
+    exportTitle: "Export",
+    exportNote: "Secret-free exports: tokens, estimates, budgets and account status only. No prompts, replies or credentials.",
+    exportDaily: "Daily CSV",
+    exportDailyHint: "One row per day, provider and model.",
+    exportSessions: "Sessions CSV",
+    exportSessionsHint: "One row per session with its providers and models.",
+    exportJson: "Versioned JSON",
+    exportJsonHint: "Usage, budgets and account snapshots in one document."
   };
   var ZH = {
     title: "\u6A21\u578B\u7528\u91CF\u7EDF\u8BA1",
     subtitle: "\u8BB0\u5F55\u672C\u673A Harness \u4E2D\u6BCF\u6B21\u6A21\u578B\u8C03\u7528\uFF0C\u6309\u63D0\u4F9B\u65B9\u3001\u6A21\u578B\u3001\u65E5\u671F\u548C\u4F1A\u8BDD\u6C47\u603B\u3002",
     badge: "\u672C\u5730",
+    tabUsage: "\u7528\u91CF",
+    tabAccounts: "\u8D26\u6237",
+    tabExport: "\u5BFC\u51FA",
     rangeToday: "\u4ECA\u65E5",
     range7: "\u8FD1 7 \u5929",
     range30: "\u8FD1 30 \u5929",
@@ -82,9 +119,40 @@
     backfillRunning: "\u6B63\u5728\u56DE\u586B\u5386\u53F2\u4F1A\u8BDD\u2026",
     backfillDone: "\u5386\u53F2\u56DE\u586B\u5B8C\u6210",
     backfillError: "\u5386\u53F2\u56DE\u586B\u4E2D\u6B62",
-    scanSkipped: "\u672A\u53D8\u5316",
     sourceNote: "\u6570\u636E\u6765\u6E90\uFF1A\u4F1A\u8BDD\u4E8B\u4EF6\u4E2D provider \u4E0A\u62A5\u7684\u7528\u91CF\uFF0C\u4EC5\u4FDD\u5B58\u5728\u672C\u673A\u3002",
-    estimateNote: "\u8D39\u7528\u662F\u4F30\u7B97\u503C\uFF1A\u6BCF\u4E2A\u6837\u672C\u6309\u4E8B\u4EF6\u53D1\u751F\u65F6\u751F\u6548\u7684\u4EF7\u683C\u89C4\u5219\u8BA1\u4EF7\u3002"
+    estimateNote: "\u8D39\u7528\u662F\u4F30\u7B97\u503C\uFF1A\u6BCF\u4E2A\u6837\u672C\u6309\u4E8B\u4EF6\u53D1\u751F\u65F6\u751F\u6548\u7684\u4EF7\u683C\u89C4\u5219\u8BA1\u4EF7\u3002",
+    budgetDaily: "\u4ECA\u65E5",
+    budgetMonthly: "\u672C\u6708",
+    budgetIncomplete: "\u8D39\u7528\u4E0D\u5B8C\u6574",
+    budgetNoLimit: "\u672A\u8BBE\u7F6E\u4E0A\u9650",
+    accountsEmpty: "\u6CA1\u6709\u53D1\u73B0\u53EF\u67E5\u8BE2\u7684\u8D26\u6237\u6765\u6E90\u3002\u8BF7\u767B\u5F55 DeepSeek \u8D26\u6237\uFF0C\u6216\u914D\u7F6E llm-pi-ai \u63D0\u4F9B\u65B9\u3002",
+    accountsRefresh: "\u5237\u65B0\u8D26\u6237",
+    accountsUpdated: "\u8D26\u6237\u66F4\u65B0\u4E8E",
+    accountsLoading: "\u6B63\u5728\u52A0\u8F7D\u8D26\u6237\u2026",
+    accountsError: "\u8D26\u6237\u67E5\u8BE2\u5931\u8D25",
+    accountsNote: "\u4F59\u989D\u53EA\u7531 Host \u67E5\u8BE2\uFF0C\u51ED\u636E\u4E0D\u4F1A\u8FDB\u5165\u672C\u9875\u9762\u3002",
+    accountsBalance: "\u4F59\u989D",
+    accountsUsed: "\u5DF2\u7528",
+    accountsLimit: "\u4E0A\u9650",
+    accountsGranted: "\u8D60\u9001",
+    accountsToppedUp: "\u5145\u503C",
+    accountsPlan: "\u5957\u9910",
+    accountsNoQuota: "\u672A\u8FD4\u56DE\u989D\u5EA6\u7A97\u53E3",
+    accountsStatusOk: "\u6B63\u5E38",
+    accountsStatusUnconfigured: "\u672A\u767B\u5F55/\u672A\u914D\u7F6E",
+    accountsStatusUnsupported: "\u65E0\u516C\u5F00\u63A5\u53E3",
+    accountsStatusError: "\u67E5\u8BE2\u5931\u8D25",
+    accountsStale: "\u65E7\u6570\u636E",
+    accountsWindowRemaining: "\u5269\u4F59",
+    accountsSignInHint: "\u5728 DSH \u4E2D\u767B\u5F55 DeepSeek \u8D26\u6237\uFF0C\u6216\u914D\u7F6E\u63D0\u4F9B\u65B9\u51ED\u636E\u540E\u5237\u65B0\u3002",
+    exportTitle: "\u5BFC\u51FA",
+    exportNote: "\u65E0\u51ED\u636E\u5BFC\u51FA\uFF1A\u4EC5\u5305\u542B token\u3001\u8D39\u7528\u4F30\u7B97\u3001\u9884\u7B97\u4E0E\u8D26\u6237\u72B6\u6001\uFF0C\u4E0D\u542B\u63D0\u793A\u8BCD\u3001\u56DE\u590D\u6216\u51ED\u636E\u3002",
+    exportDaily: "\u6309\u65E5 CSV",
+    exportDailyHint: "\u6BCF\u884C\u5BF9\u5E94\u4E00\u4E2A\u65E5\u671F\u3001\u63D0\u4F9B\u65B9\u4E0E\u6A21\u578B\u3002",
+    exportSessions: "\u4F1A\u8BDD CSV",
+    exportSessionsHint: "\u6BCF\u884C\u4E00\u4E2A\u4F1A\u8BDD\u53CA\u5176\u63D0\u4F9B\u65B9\u4E0E\u6A21\u578B\u3002",
+    exportJson: "\u7248\u672C\u5316 JSON",
+    exportJsonHint: "\u7528\u91CF\u3001\u9884\u7B97\u4E0E\u8D26\u6237\u5FEB\u7167\u5408\u6210\u4E00\u4EFD\u6587\u6863\u3002"
   };
   function fallbackTranslate(locale) {
     return (key) => {
@@ -158,6 +226,19 @@
   function formatPercent(rate) {
     if (typeof rate !== "number" || !Number.isFinite(rate)) return "\u2014";
     return `${rate.toFixed(1)}%`;
+  }
+  function formatMoney(amount, currency) {
+    if (typeof amount !== "number" || !Number.isFinite(amount)) return "\u2014";
+    if (currency === null || currency === void 0) return formatInteger(amount);
+    try {
+      return new Intl.NumberFormat(void 0, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: amount !== 0 && Math.abs(amount) < 1 ? 4 : 2
+      }).format(amount);
+    } catch {
+      return `${amount} ${currency}`;
+    }
   }
   function formatClock(time) {
     const date = new Date(typeof time === "number" && Number.isFinite(time) ? time : Date.now());
@@ -407,7 +488,75 @@
       gap: "12px"
     },
     providerName: { fontSize: "13px", fontWeight: 500 },
-    providerStats: { fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)", fontVariantNumeric: "tabular-nums" }
+    providerStats: { fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)", fontVariantNumeric: "tabular-nums" },
+    budgetRow: {
+      boxSizing: "border-box",
+      width: "100%",
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px"
+    },
+    budgetHead: { display: "flex", justifyContent: "space-between", gap: "12px", fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" },
+    progressTrack: {
+      width: "100%",
+      height: "6px",
+      borderRadius: "999px",
+      background: "var(--dsw-alias-bg-layer-2, rgba(0,0,0,0.08))",
+      overflow: "hidden"
+    },
+    progressFill: { height: "100%", borderRadius: "999px", background: "var(--dsw-alias-brand-primary, #2563eb)" },
+    accountCard: {
+      boxSizing: "border-box",
+      width: "100%",
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+      border: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)",
+      borderRadius: "14px",
+      background: "var(--dsw-alias-bg-layer-1, transparent)",
+      padding: "12px 14px"
+    },
+    accountHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" },
+    accountName: { fontSize: "14px", fontWeight: 500 },
+    accountBadge: {
+      fontSize: "11px",
+      borderRadius: "999px",
+      padding: "1px 8px",
+      border: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)",
+      color: "var(--dsw-alias-label-secondary, inherit)",
+      whiteSpace: "nowrap"
+    },
+    accountBadgeError: { borderColor: "var(--dsw-alias-state-error-primary, #d33)", color: "var(--dsw-alias-state-error-primary, #d33)" },
+    accountBadgeWarn: { borderColor: "var(--dsw-alias-state-warn-primary, #d97706)", color: "var(--dsw-alias-state-warn-primary, #d97706)" },
+    accountFigures: { display: "flex", flexWrap: "wrap", gap: "16px" },
+    figure: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "90px" },
+    figureLabel: { fontSize: "11px", color: "var(--dsw-alias-label-secondary, inherit)" },
+    figureValue: { fontSize: "16px", fontWeight: 600, fontVariantNumeric: "tabular-nums" },
+    quotaRow: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", fontSize: "12px" },
+    quotaLabel: { color: "var(--dsw-alias-label-secondary, inherit)" },
+    exportItem: {
+      boxSizing: "border-box",
+      width: "100%",
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      border: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)",
+      borderRadius: "14px",
+      padding: "12px 14px",
+      background: "var(--dsw-alias-bg-layer-1, transparent)"
+    },
+    exportLink: {
+      alignSelf: "flex-start",
+      font: "inherit",
+      fontSize: "13px",
+      lineHeight: "20px",
+      padding: "4px 12px",
+      borderRadius: "999px",
+      border: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)",
+      color: "var(--dsw-alias-label-primary, inherit)",
+      textDecoration: "none"
+    },
+    exportHint: { margin: 0, fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" }
   };
   function DataTable(props) {
     if (props.rows.length === 0) return h("p", { style: styles.hint }, props.empty);
@@ -544,15 +693,207 @@
       })
     ]);
   }
+  var ACCOUNTS_URL = "/token-usage-statistic/api/accounts";
+  var EXPORTS = {
+    daily: "/token-usage-statistic/api/export/daily.csv",
+    sessions: "/token-usage-statistic/api/export/sessions.csv",
+    json: "/token-usage-statistic/api/export.json"
+  };
+  function figureOf(label, value) {
+    return h("div", { style: styles.figure }, [
+      h("span", { key: "label", style: styles.figureLabel }, label),
+      h("span", { key: "value", style: styles.figureValue }, value)
+    ]);
+  }
+  function quotaText(window, translate) {
+    const unit = window.unit === null ? "" : ` ${window.unit}`;
+    if (window.used !== null && window.limit !== null) return `${formatInteger(window.used)} / ${formatInteger(window.limit)}${unit}`;
+    if (window.remaining !== null) return `${formatInteger(window.remaining)}${unit} ${translate("accountsWindowRemaining")}`;
+    if (window.limit !== null) return `${formatInteger(window.limit)}${unit}`;
+    return "\u2014";
+  }
+  function BudgetBar(props) {
+    const window = props.window;
+    if (window === void 0 || window.limit === null) return null;
+    const incomplete = !window.costComplete || window.percent === null;
+    const fill = incomplete ? 0 : Math.max(0, Math.min(100, window.percent ?? 0));
+    const color = window.level === "exceeded" ? "var(--dsw-alias-state-error-primary, #d33)" : window.level === "warn" ? "var(--dsw-alias-state-warn-primary, #d97706)" : "var(--dsw-alias-brand-primary, #2563eb)";
+    const value = incomplete ? props.translate("budgetIncomplete") : `${formatMoney(window.spend ?? 0, window.currency)} / ${formatMoney(window.limit, window.currency)} \xB7 ${(window.percent ?? 0).toFixed(1)}%`;
+    return h("div", { style: styles.budgetRow }, [
+      h("div", { key: "head", style: styles.budgetHead }, [
+        h("span", { key: "label" }, props.label),
+        h("span", { key: "value" }, value)
+      ]),
+      h(
+        "div",
+        { key: "track", style: styles.progressTrack },
+        h("div", { style: { ...styles.progressFill, width: `${fill}%`, background: color } })
+      )
+    ]);
+  }
+  function AccountCard(props) {
+    const { account, translate } = props;
+    const badgeText = account.status === "ok" ? translate("accountsStatusOk") : account.status === "error" ? translate("accountsStatusError") : account.status === "unsupported" ? translate("accountsStatusUnsupported") : translate("accountsStatusUnconfigured");
+    const badgeStyle = account.status === "error" ? { ...styles.accountBadge, ...styles.accountBadgeError } : account.status === "unconfigured" || account.status === "unsupported" ? styles.accountBadge : account.stale ? { ...styles.accountBadge, ...styles.accountBadgeWarn } : styles.accountBadge;
+    const children = [
+      h("div", { key: "head", style: styles.accountHead }, [
+        h("span", { key: "name", style: styles.accountName }, account.displayName),
+        h(
+          "span",
+          { key: "badge", style: badgeStyle },
+          account.stale && account.status === "ok" ? `${badgeText} \xB7 ${translate("accountsStale")}` : badgeText
+        )
+      ])
+    ];
+    const balance = account.balance;
+    if (balance !== void 0) {
+      const figures = [figureOf(translate("accountsBalance"), formatMoney(balance.total, balance.currency))];
+      if (balance.toppedUp !== null) figures.push(figureOf(translate("accountsToppedUp"), formatMoney(balance.toppedUp, balance.currency)));
+      if (balance.granted !== null) figures.push(figureOf(translate("accountsGranted"), formatMoney(balance.granted, balance.currency)));
+      if (balance.used !== null) figures.push(figureOf(translate("accountsUsed"), formatMoney(balance.used, balance.currency)));
+      if (balance.limit !== null) figures.push(figureOf(translate("accountsLimit"), formatMoney(balance.limit, balance.currency)));
+      children.push(h("div", { key: "figures", style: styles.accountFigures }, figures));
+    }
+    if (account.subscription !== void 0) {
+      children.push(
+        h("div", { key: "plan", style: styles.quotaRow }, [
+          h("span", { key: "label", style: styles.quotaLabel }, translate("accountsPlan")),
+          h("span", { key: "value" }, account.subscription.plan ?? "\u2014")
+        ])
+      );
+      if (account.subscription.windows.length === 0) {
+        children.push(h("p", { key: "noquota", style: styles.exportHint }, translate("accountsNoQuota")));
+      } else {
+        children.push(
+          h(
+            "div",
+            { key: "windows", style: { display: "flex", flexDirection: "column", gap: "4px" } },
+            account.subscription.windows.map(
+              (window) => h("div", { key: window.id, style: styles.quotaRow }, [
+                h("span", { key: "label", style: styles.quotaLabel }, window.label),
+                h("span", { key: "value" }, quotaText(window, translate))
+              ])
+            )
+          )
+        );
+      }
+    }
+    if (account.lastError !== null) children.push(h("p", { key: "error", style: styles.exportHint }, account.lastError));
+    if (account.status === "unconfigured") {
+      children.push(h("p", { key: "hint", style: styles.exportHint }, translate("accountsSignInHint")));
+    }
+    return h("div", { style: styles.accountCard }, children);
+  }
+  function useAccounts() {
+    const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [request, setRequest] = useState({ nonce: 0, force: false });
+    useEffect(() => {
+      let cancelled = false;
+      const controller = new AbortController();
+      const load = async () => {
+        try {
+          const url = request.force ? `${ACCOUNTS_URL}?refresh=1` : ACCOUNTS_URL;
+          const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          if (cancelled) return;
+          setData(payload);
+          setError(null);
+        } catch (cause) {
+          if (cancelled) return;
+          if (cause !== null && typeof cause === "object" && cause.name === "AbortError") return;
+          setError(cause instanceof Error ? cause.message : String(cause));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      };
+      setLoading(true);
+      void load();
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }, [request]);
+    useEffect(() => {
+      const timer = setInterval(() => setRequest((value) => ({ nonce: value.nonce + 1, force: false })), 6e4);
+      return () => clearInterval(timer);
+    }, []);
+    const refresh = useCallback(() => setRequest((value) => ({ nonce: value.nonce + 1, force: true })), []);
+    return { data, error, loading, refresh };
+  }
+  function AccountsPage(props) {
+    useLocaleRevision(props.locale);
+    const { data, error, loading, refresh } = useAccounts();
+    const translate = props.translate;
+    const children = [
+      h(
+        "div",
+        { key: "toolbar", style: styles.toolbar },
+        h("span", { key: "updated", style: styles.cellMuted }, data === null ? "" : `${translate("accountsUpdated")} ${formatClock(data.generatedAt)}`),
+        h(
+          "button",
+          { key: "refresh", type: "button", onClick: refresh, disabled: loading, style: styles.ghostButton },
+          translate("accountsRefresh")
+        )
+      )
+    ];
+    if (error !== null) {
+      children.push(
+        h("div", { key: "error", style: styles.noticeError, role: "alert" }, `${translate("accountsError")} \xB7 ${error}`)
+      );
+    }
+    if (data === null) {
+      children.push(h("p", { key: "loading", style: styles.hint }, translate("accountsLoading")));
+    } else if (data.accounts.length === 0) {
+      children.push(
+        h("div", { key: "empty", style: styles.empty }, [
+          h("p", { key: "title", style: styles.emptyTitle }, translate("accountsEmpty"))
+        ])
+      );
+    } else {
+      children.push(
+        h(
+          "div",
+          { key: "list", style: { ...styles.section, gap: "10px" } },
+          data.accounts.map((account) => h(AccountCard, { key: account.id, account, translate }))
+        )
+      );
+    }
+    children.push(h("p", { key: "note", style: styles.footer }, translate("accountsNote")));
+    return h("div", { style: { display: "contents" } }, children);
+  }
+  function ExportPage(props) {
+    const translate = props.translate;
+    const links = [
+      { key: "daily", href: EXPORTS.daily, file: "token-usage-daily.csv", title: translate("exportDaily"), hint: translate("exportDailyHint") },
+      { key: "sessions", href: EXPORTS.sessions, file: "token-usage-sessions.csv", title: translate("exportSessions"), hint: translate("exportSessionsHint") },
+      { key: "json", href: EXPORTS.json, file: "token-usage-export.json", title: translate("exportJson"), hint: translate("exportJsonHint") }
+    ];
+    return h("div", { style: { display: "contents" } }, [
+      h(
+        "div",
+        { key: "list", style: { ...styles.section, gap: "10px" } },
+        links.map(
+          (link) => h("div", { key: link.key, style: styles.exportItem }, [
+            h("a", { key: "link", href: link.href, download: link.file, style: styles.exportLink }, link.title),
+            h("p", { key: "hint", style: styles.exportHint }, link.hint)
+          ])
+        )
+      ),
+      h("p", { key: "note", style: styles.footer }, translate("exportNote"))
+    ]);
+  }
   function Panel(props) {
     useLocaleRevision(props.locale);
     const translate = props.translate;
+    const [tab, setTab] = useState("usage");
     const [range, setRange] = useState("30");
     const { data, error, loading, refresh } = useSummary(range);
     const totals = data?.totals;
-    const hasData = data !== null && totals !== void 0 && totals.calls > 0;
-    const backfill = data?.backfill;
     const costIncomplete = data !== null && (data.totals.cost.amount === null || data.totals.cost.unpricedCalls > 0);
+    const backfill = data?.backfill;
     const metrics = [
       {
         key: "tokens",
@@ -599,6 +940,11 @@
       { key: "cost", label: translate("cost"), align: "right", render: (row) => formatCost(row.cost) },
       { key: "lastUsed", label: translate("lastUsed"), align: "right", render: (row) => formatDateTime(row.lastAt) }
     ];
+    const tabItems = [
+      { id: "usage", label: translate("tabUsage") },
+      { id: "accounts", label: translate("tabAccounts") },
+      { id: "export", label: translate("tabExport") }
+    ];
     const children = [
       h("header", { key: "head", style: styles.head }, [
         h("div", { key: "heading" }, [
@@ -607,125 +953,164 @@
         ]),
         h("div", { key: "side", style: styles.headSide }, [
           h("span", { key: "pill", style: styles.pill }, translate("badge")),
-          h(
+          tab === "usage" ? h(
             "button",
             { key: "refresh", type: "button", onClick: refresh, disabled: loading, style: styles.ghostButton },
             translate("refresh")
-          )
+          ) : null
         ])
       ]),
       h(
         "div",
-        { key: "toolbar", style: styles.toolbar },
+        { key: "tabs", style: styles.toolbar },
         h(
           "div",
-          { key: "ranges", style: styles.segmented, role: "tablist", "aria-label": translate("title") },
-          RANGES.map(
-            (value) => h(
+          { key: "tabgroup", style: styles.segmented, role: "tablist", "aria-label": translate("title") },
+          tabItems.map(
+            (item) => h(
               "button",
               {
-                key: value,
+                key: item.id,
                 type: "button",
                 role: "tab",
-                "aria-selected": range === value,
-                onClick: () => setRange(value),
-                style: range === value ? { ...styles.segment, ...styles.segmentActive } : styles.segment
+                "aria-selected": tab === item.id,
+                onClick: () => setTab(item.id),
+                style: tab === item.id ? { ...styles.segment, ...styles.segmentActive } : styles.segment
               },
-              rangeLabel(value, translate)
+              item.label
             )
           )
-        ),
-        data === null ? null : h("span", { key: "updated", style: styles.cellMuted }, `${translate("updated")} ${formatClock(data.generatedAt)}`)
+        )
       )
     ];
-    if (error !== null) {
-      children.push(
-        h("div", { key: "error", style: styles.noticeError, role: "alert" }, [
-          h("span", { key: "text" }, `${translate("loadFailed")} \xB7 ${error}`),
-          h("button", { key: "retry", type: "button", onClick: refresh, style: styles.ghostButton }, translate("retry"))
-        ])
-      );
-    }
-    if (backfill !== void 0 && backfill.state === "running") {
+    if (tab === "usage") {
       children.push(
         h(
           "div",
-          { key: "backfill", style: styles.notice },
-          `${translate("backfillRunning")} ${formatInteger(backfill.sessions)} / ${formatInteger(backfill.events)}`
+          { key: "toolbar", style: styles.toolbar },
+          h(
+            "div",
+            { key: "ranges", style: styles.segmented, role: "group", "aria-label": translate("title") },
+            RANGES.map(
+              (value) => h(
+                "button",
+                {
+                  key: value,
+                  type: "button",
+                  "aria-pressed": range === value,
+                  onClick: () => setRange(value),
+                  style: range === value ? { ...styles.segment, ...styles.segmentActive } : styles.segment
+                },
+                rangeLabel(value, translate)
+              )
+            )
+          ),
+          data === null ? null : h("span", { key: "updated", style: styles.cellMuted }, `${translate("updated")} ${formatClock(data.generatedAt)}`)
         )
       );
-    } else if (backfill !== void 0 && backfill.state === "error") {
-      children.push(
-        h("div", { key: "backfill", style: styles.notice }, `${translate("backfillError")}: ${backfill.error ?? ""}`)
-      );
-    }
-    if (data === null) {
-      children.push(h("p", { key: "loading", style: styles.hint }, translate("loading")));
-    } else if (data.totals.calls === 0) {
-      children.push(
-        h("div", { key: "empty", style: styles.empty }, [
-          h("p", { key: "title", style: styles.emptyTitle }, translate("empty")),
-          h("p", { key: "hint", style: styles.hint }, translate("emptyHint"))
-        ])
-      );
-    } else {
-      children.push(
-        h(
-          "div",
-          { key: "metrics", style: styles.metrics },
-          metrics.map(
-            (metric) => h(Metric, { key: metric.key, label: metric.label, value: metric.value, note: metric.note, title: metric.title })
-          )
-        )
-      );
-      if (costIncomplete) {
+      if (error !== null) {
+        children.push(
+          h("div", { key: "error", style: styles.noticeError, role: "alert" }, [
+            h("span", { key: "text" }, `${translate("loadFailed")} \xB7 ${error}`),
+            h("button", { key: "retry", type: "button", onClick: refresh, style: styles.ghostButton }, translate("retry"))
+          ])
+        );
+      }
+      if (backfill !== void 0 && backfill.state === "running") {
         children.push(
           h(
             "div",
-            { key: "unpriced", style: styles.notice },
-            `${translate("unpriced")} (${formatInteger(data.totals.cost.unpricedCalls)}) \xB7 ${translate("unpricedHint")}`
+            { key: "backfill", style: styles.notice },
+            `${translate("backfillRunning")} ${formatInteger(backfill.sessions)} / ${formatInteger(backfill.events)}`
+          )
+        );
+      } else if (backfill !== void 0 && backfill.state === "error") {
+        children.push(h("div", { key: "backfill", style: styles.notice }, `${translate("backfillError")}: ${backfill.error ?? ""}`));
+      }
+      if (data === null) {
+        children.push(h("p", { key: "loading", style: styles.hint }, translate("loading")));
+      } else if (data.totals.calls === 0) {
+        children.push(
+          h("div", { key: "empty", style: styles.empty }, [
+            h("p", { key: "title", style: styles.emptyTitle }, translate("empty")),
+            h("p", { key: "hint", style: styles.hint }, translate("emptyHint"))
+          ])
+        );
+      } else {
+        children.push(
+          h(
+            "div",
+            { key: "metrics", style: styles.metrics },
+            metrics.map(
+              (metric) => h(Metric, { key: metric.key, label: metric.label, value: metric.value, note: metric.note, title: metric.title })
+            )
+          )
+        );
+        if (data.budgets.daily.limit !== null || data.budgets.monthly.limit !== null) {
+          children.push(
+            h(
+              "div",
+              { key: "budgets", style: { width: "100%", maxWidth: "960px", display: "flex", flexDirection: "column", gap: "10px" } },
+              [
+                h(BudgetBar, { key: "daily", label: translate("budgetDaily"), window: data.budgets.daily, translate }),
+                h(BudgetBar, { key: "monthly", label: translate("budgetMonthly"), window: data.budgets.monthly, translate })
+              ]
+            )
+          );
+        }
+        if (costIncomplete) {
+          children.push(
+            h(
+              "div",
+              { key: "unpriced", style: styles.notice },
+              `${translate("unpriced")} (${formatInteger(data.totals.cost.unpricedCalls)}) \xB7 ${translate("unpricedHint")}`
+            )
+          );
+        }
+        children.push(
+          h("section", { key: "providers", style: styles.section }, [
+            h("h2", { key: "title", style: styles.sectionTitle }, translate("byProvider")),
+            ...data.byProvider.map((provider) => h(ProviderCard, { key: provider.provider, provider, translate }))
+          ])
+        );
+        children.push(
+          h("section", { key: "days", style: styles.section }, [
+            h("h2", { key: "title", style: styles.sectionTitle }, translate("byDay")),
+            h(DataTable, {
+              key: "table",
+              columns: dayColumns,
+              rows: data.byDay.slice(0, 31),
+              empty: translate("empty"),
+              rowKey: (row) => row.day
+            })
+          ])
+        );
+        children.push(
+          h("section", { key: "sessions", style: styles.section }, [
+            h("h2", { key: "title", style: styles.sectionTitle }, translate("sessions")),
+            h(DataTable, {
+              key: "table",
+              columns: sessionColumns,
+              rows: data.sessions,
+              empty: translate("empty"),
+              rowKey: (row) => row.sessionId
+            })
+          ])
+        );
+      }
+      if (data !== null) {
+        children.push(
+          h(
+            "p",
+            { key: "footer", style: styles.footer },
+            `${translate("sourceNote")} \xB7 ${translate("estimateNote")} \xB7 ${formatInteger(data.counts.samples)} ${translate("records")}`
           )
         );
       }
-      children.push(
-        h("section", { key: "providers", style: styles.section }, [
-          h("h2", { key: "title", style: styles.sectionTitle }, translate("byProvider")),
-          ...data.byProvider.map((provider) => h(ProviderCard, { key: provider.provider, provider, translate }))
-        ])
-      );
-      children.push(
-        h("section", { key: "days", style: styles.section }, [
-          h("h2", { key: "title", style: styles.sectionTitle }, translate("byDay")),
-          h(DataTable, {
-            key: "table",
-            columns: dayColumns,
-            rows: data.byDay.slice(0, 31),
-            empty: translate("empty"),
-            rowKey: (row) => row.day
-          })
-        ])
-      );
-      children.push(
-        h("section", { key: "sessions", style: styles.section }, [
-          h("h2", { key: "title", style: styles.sectionTitle }, translate("sessions")),
-          h(DataTable, {
-            key: "table",
-            columns: sessionColumns,
-            rows: data.sessions,
-            empty: translate("empty"),
-            rowKey: (row) => row.sessionId
-          })
-        ])
-      );
-    }
-    if (data !== null) {
-      children.push(
-        h(
-          "p",
-          { key: "footer", style: styles.footer },
-          `${translate("sourceNote")} \xB7 ${translate("estimateNote")} \xB7 ${formatInteger(data.counts.samples)} ${translate("records")}`
-        )
-      );
+    } else if (tab === "accounts") {
+      children.push(h(AccountsPage, { key: "accounts", translate, locale: props.locale }));
+    } else {
+      children.push(h(ExportPage, { key: "export", translate }));
     }
     return h("div", { style: styles.page }, children);
   }
