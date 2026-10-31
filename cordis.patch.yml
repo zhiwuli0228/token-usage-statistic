@@ -1,0 +1,20 @@
+# token-usage-statistic bundle patch.
+#
+# One Loader entry for the plugin package. Every knob has a default in the
+# plugin's own code, so a bare mount is safe; override the row (same id) in the
+# profile's cordis.patch.yml to tune it, for example:
+#
+#   - insert:
+#       - id: token-usage-statistic
+#         name: 'token-usage-statistic'
+#     override:
+#       - id: token-usage-statistic
+#         config:
+#           refreshMs: 60000
+#
+# The plugin id equals the package name so `plugins.row.config` and the
+# bundle's own page can address this row without a mapping.
+- insert:
+    - id: token-usage-statistic
+      name: 'token-usage-statistic'
+      config: {}
