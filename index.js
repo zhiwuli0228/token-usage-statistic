@@ -148,6 +148,7 @@ var API_PREFIX = "/token-usage-statistic/";
 var ROUTES = {
   summary: `${API_PREFIX}api/summary`,
   accounts: `${API_PREFIX}api/accounts`,
+  daily: `${API_PREFIX}api/daily`,
   exportDaily: `${API_PREFIX}api/export/daily.csv`,
   exportSessions: `${API_PREFIX}api/export/sessions.csv`,
   exportJson: `${API_PREFIX}api/export.json`
@@ -238,6 +239,15 @@ function createHttpHandler(dependencies) {
         case ROUTES.accounts: {
           if (url.searchParams.get("refresh") === "1") dependencies.refreshAccounts();
           sendJson(response, 200, dependencies.accounts(), method);
+          return;
+        }
+        case ROUTES.daily: {
+          const snapshot = dependencies.store.dailyDetails({
+            days: parseDays(url.searchParams.get("days")),
+            sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
+            now: now()
+          });
+          sendJson(response, 200, snapshot, method);
           return;
         }
         case ROUTES.exportDaily: {
@@ -1872,6 +1882,57 @@ var UsageStore = class {
     }
     rows.sort((left, right) => right.tokens - left.tokens || right.calls - left.calls);
     return rows;
+  }
+  /** Per-day detail view for the chart and drill-down tables. */
+  dailyDetails(options = {}) {
+    const now = options.now ?? Date.now();
+    const requestedDays = options.days === void 0 ? 30 : options.days;
+    const range = resolveRange(requestedDays, now);
+    const sessionLimit = Math.max(0, Math.floor(options.sessionLimit ?? 12));
+    const days = [];
+    for (const [day, entry] of this.days) {
+      if (range !== null && day < range.from) continue;
+      const models = [];
+      for (const [key, model] of entry.models) {
+        const { provider, model: modelId } = splitModelKey(key);
+        models.push({
+          key,
+          provider,
+          model: modelId,
+          ...totalsOf(model.buckets, model.calls),
+          cost: renderCost(model.cost)
+        });
+      }
+      models.sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model));
+      const sessions = [];
+      for (const [sessionId, session] of entry.sessions) {
+        const record = this.sessions.get(sessionId);
+        sessions.push({
+          sessionId,
+          ...totalsOf(session.buckets, session.calls),
+          firstAt: record?.firstAt ?? session.lastAt,
+          lastAt: record?.lastAt ?? session.lastAt,
+          cost: renderCost(session.cost),
+          models: record === void 0 ? [] : [...record.models.keys()].sort()
+        });
+      }
+      sessions.sort((left, right) => right.tokens - left.tokens || right.calls - left.calls);
+      const limitedSessions = sessions.slice(0, sessionLimit);
+      days.push({
+        day,
+        ...totalsOf(entry.buckets, entry.calls),
+        cost: renderCost(entry.cost),
+        sessions: limitedSessions,
+        models
+      });
+    }
+    days.sort((left, right) => left.day < right.day ? 1 : left.day > right.day ? -1 : 0);
+    return {
+      schemaVersion: 2,
+      generatedAt: now,
+      range: range === null ? { days: null, from: null, to: null } : range,
+      days
+    };
   }
   /** The pricing catalog's own version string. */
   pricingCatalogUpdatedAt() {

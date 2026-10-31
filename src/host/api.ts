@@ -21,6 +21,7 @@ export const API_PREFIX = '/token-usage-statistic/'
 export const ROUTES = {
   summary: `${API_PREFIX}api/summary`,
   accounts: `${API_PREFIX}api/accounts`,
+  daily: `${API_PREFIX}api/daily`,
   exportDaily: `${API_PREFIX}api/export/daily.csv`,
   exportSessions: `${API_PREFIX}api/export/sessions.csv`,
   exportJson: `${API_PREFIX}api/export.json`,
@@ -151,6 +152,15 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
         case ROUTES.accounts: {
           if (url.searchParams.get('refresh') === '1') dependencies.refreshAccounts()
           sendJson(response, 200, dependencies.accounts(), method)
+          return
+        }
+        case ROUTES.daily: {
+          const snapshot = dependencies.store.dailyDetails({
+            days: parseDays(url.searchParams.get('days')),
+            sessionLimit: parseLimit(url.searchParams.get('sessions'), 12, 100),
+            now: now(),
+          })
+          sendJson(response, 200, snapshot, method)
           return
         }
         case ROUTES.exportDaily: {

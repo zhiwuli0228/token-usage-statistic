@@ -145,6 +145,22 @@ export interface DayUsageView extends Totals {
   cost: CostRender
 }
 
+/** One calendar day with a drill-down into its sessions and models. */
+export interface DayDetailView extends Totals {
+  day: string
+  cost: CostRender
+  sessions: SessionUsageView[]
+  models: ModelUsageView[]
+}
+
+/** Payload for `GET /token-usage-statistic/api/daily`. */
+export interface DailyPayload {
+  schemaVersion: 2
+  generatedAt: number
+  range: { days: number | null; from: string | null; to: string | null }
+  days: DayDetailView[]
+}
+
 /** One session row in the selected range. */
 export interface SessionUsageView extends Totals {
   sessionId: string

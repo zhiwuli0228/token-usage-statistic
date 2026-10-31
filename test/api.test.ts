@@ -35,6 +35,26 @@ const budgets: BudgetState = {
 function storeStub(overrides: Record<string, unknown> = {}) {
   return {
     snapshot: vi.fn(() => ({ ok: true })),
+    dailyDetails: vi.fn(() => ({
+      schemaVersion: 2,
+      generatedAt: 1234,
+      range: { days: 1, from: '2026-10-31', to: '2026-10-31' },
+      days: [
+        {
+          day: '2026-10-31',
+          calls: 2,
+          input: 10,
+          output: 5,
+          cacheRead: 20,
+          cacheWrite: 0,
+          tokens: 35,
+          cacheHitRate: 66.7,
+          cost: { amount: 0.5, currency: 'USD', complete: true, pricedCalls: 2, unpricedCalls: 0, ruleIds: ['r'] },
+          sessions: [],
+          models: [],
+        },
+      ],
+    })),
     dailyRows: () => [
       {
         day: '2026-10-31',
@@ -156,6 +176,19 @@ describe('accounts route', () => {
     expect(response.status).toBe(200)
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(JSON.parse(response.body)).toMatchObject({ schemaVersion: 1, accounts: [] })
+  })
+})
+
+describe('daily route', () => {
+  it('serves per-day details with sessions and models', () => {
+    const store = storeStub()
+    const handler = handlerWith({ store })
+    const response = call(handler, 'GET', ROUTES.daily)
+    expect(response.status).toBe(200)
+    expect(store.dailyDetails).toHaveBeenCalledWith(expect.objectContaining({ days: 30 }))
+    const body = JSON.parse(response.body)
+    expect(body.days).toHaveLength(1)
+    expect(body.days[0].day).toBe('2026-10-31')
   })
 })
 

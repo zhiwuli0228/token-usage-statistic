@@ -76,7 +76,16 @@
     exportSessions: "Sessions CSV",
     exportSessionsHint: "One row per session with its providers and models.",
     exportJson: "Versioned JSON",
-    exportJsonHint: "Usage, budgets and account snapshots in one document."
+    exportJsonHint: "Usage, budgets and account snapshots in one document.",
+    chartTitle: "Daily usage",
+    chartMetricTokens: "Tokens",
+    chartMetricCalls: "Calls",
+    chartMetricCost: "Cost",
+    chartHint: "Click a bar to view the details for that day.",
+    chartEmpty: "No daily usage to chart yet.",
+    dayDetailTitle: "Details for {{day}}",
+    dayDetailSessions: "Sessions",
+    dayDetailModels: "Models"
   };
   var ZH = {
     title: "\u6A21\u578B\u7528\u91CF\u7EDF\u8BA1",
@@ -152,7 +161,16 @@
     exportSessions: "\u4F1A\u8BDD CSV",
     exportSessionsHint: "\u6BCF\u884C\u4E00\u4E2A\u4F1A\u8BDD\u53CA\u5176\u63D0\u4F9B\u65B9\u4E0E\u6A21\u578B\u3002",
     exportJson: "\u7248\u672C\u5316 JSON",
-    exportJsonHint: "\u7528\u91CF\u3001\u9884\u7B97\u4E0E\u8D26\u6237\u5FEB\u7167\u5408\u6210\u4E00\u4EFD\u6587\u6863\u3002"
+    exportJsonHint: "\u7528\u91CF\u3001\u9884\u7B97\u4E0E\u8D26\u6237\u5FEB\u7167\u5408\u6210\u4E00\u4EFD\u6587\u6863\u3002",
+    chartTitle: "\u6BCF\u65E5\u7528\u91CF",
+    chartMetricTokens: "Tokens",
+    chartMetricCalls: "\u8C03\u7528\u6B21\u6570",
+    chartMetricCost: "\u9884\u4F30\u8D39\u7528",
+    chartHint: "\u70B9\u51FB\u67F1\u72B6\u56FE\u67E5\u770B\u5F53\u5929\u7684\u8BE6\u60C5\u3002",
+    chartEmpty: "\u5C1A\u65E0\u6BCF\u65E5\u7528\u91CF\u6570\u636E\u3002",
+    dayDetailTitle: "{{day}} \u8BE6\u60C5",
+    dayDetailSessions: "\u4F1A\u8BDD",
+    dayDetailModels: "\u6A21\u578B"
   };
   function fallbackTranslate(locale) {
     return (key) => {
@@ -289,6 +307,7 @@
 
   // src/client/panel.ts
   var SUMMARY_URL = "/token-usage-statistic/api/summary";
+  var DAILY_URL = "/token-usage-statistic/api/daily";
   var DEFAULT_REFRESH_MS = 15e3;
   var RANGES = ["1", "7", "30", "all"];
   var styles = {
@@ -556,7 +575,69 @@
       color: "var(--dsw-alias-label-primary, inherit)",
       textDecoration: "none"
     },
-    exportHint: { margin: 0, fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" }
+    exportHint: { margin: 0, fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" },
+    chart: {
+      boxSizing: "border-box",
+      width: "100%",
+      maxWidth: "960px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px"
+    },
+    chartPlot: {
+      boxSizing: "border-box",
+      width: "100%",
+      height: "180px",
+      display: "flex",
+      alignItems: "flex-end",
+      gap: "3px",
+      padding: "8px 0 28px",
+      borderBottom: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)"
+    },
+    chartBarCol: {
+      flex: 1,
+      minWidth: 0,
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: "4px",
+      border: "none",
+      background: "transparent",
+      cursor: "pointer",
+      padding: 0
+    },
+    chartBar: {
+      width: "100%",
+      maxWidth: "24px",
+      minHeight: "2px",
+      borderRadius: "4px 4px 0 0",
+      background: "var(--dsw-alias-bg-layer-2, rgba(0,0,0,0.08))"
+    },
+    chartBarActive: {
+      background: "var(--dsw-alias-brand-primary, #2563eb)"
+    },
+    chartLabel: {
+      position: "absolute",
+      bottom: "-22px",
+      left: "50%",
+      transform: "translateX(-50%) rotate(-35deg)",
+      transformOrigin: "left top",
+      fontSize: "10px",
+      color: "var(--dsw-alias-label-secondary, inherit)",
+      whiteSpace: "nowrap"
+    },
+    chartHint: { margin: 0, fontSize: "12px", color: "var(--dsw-alias-label-secondary, inherit)" },
+    dayDetail: {
+      boxSizing: "border-box",
+      width: "100%",
+      maxWidth: "960px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "10px"
+    },
+    dayDetailHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px" }
   };
   function DataTable(props) {
     if (props.rows.length === 0) return h("p", { style: styles.hint }, props.empty);
@@ -664,6 +745,50 @@
     if (range === "30") return translate("range30");
     return translate("rangeAll");
   }
+  function useDaily(range) {
+    const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [nonce, setNonce] = useState(0);
+    useEffect(() => {
+      let cancelled = false;
+      const controller = new AbortController();
+      const load = async () => {
+        try {
+          const response = await fetch(`${DAILY_URL}?days=${encodeURIComponent(range)}`, {
+            cache: "no-store",
+            signal: controller.signal
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          if (cancelled) return;
+          setData(payload);
+          setError(null);
+        } catch (cause) {
+          if (cancelled) return;
+          if (cause !== null && typeof cause === "object" && cause.name === "AbortError") return;
+          setError(cause instanceof Error ? cause.message : String(cause));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      };
+      setLoading(true);
+      void load();
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }, [range, nonce]);
+    useEffect(() => {
+      const timer = setInterval(() => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+        setNonce((value) => value + 1);
+      }, DEFAULT_REFRESH_MS);
+      return () => clearInterval(timer);
+    }, []);
+    const refresh = useCallback(() => setNonce((value) => value + 1), []);
+    return { data, error, loading, refresh };
+  }
   function modelColumns(translate) {
     return [
       { key: "model", label: translate("model"), render: (row) => h("span", { style: styles.cellStrong, title: row.key }, row.model) },
@@ -672,6 +797,104 @@
       { key: "cacheHit", label: translate("cacheHit"), align: "right", render: (row) => formatPercent(row.cacheHitRate) },
       { key: "cost", label: translate("cost"), align: "right", render: (row) => formatCost(row.cost) }
     ];
+  }
+  function sessionColumns(translate) {
+    return [
+      {
+        key: "sessionId",
+        label: translate("session"),
+        render: (row) => h("span", { title: row.sessionId }, shortSessionId(row.sessionId))
+      },
+      { key: "calls", label: translate("calls"), align: "right", render: (row) => numeric(row.calls) },
+      { key: "tokens", label: translate("tokens"), align: "right", render: (row) => numeric(row.tokens) },
+      { key: "cost", label: translate("cost"), align: "right", render: (row) => formatCost(row.cost) },
+      { key: "lastUsed", label: translate("lastUsed"), align: "right", render: (row) => formatDateTime(row.lastAt) }
+    ];
+  }
+  function DayDetail(props) {
+    const { day, translate } = props;
+    return h("div", { style: styles.dayDetail }, [
+      h("div", { key: "head", style: styles.dayDetailHead }, [
+        h("h2", { key: "title", style: styles.sectionTitle }, translate("dayDetailTitle").replace("{{day}}", day.day)),
+        h("span", { key: "summary", style: styles.cellMuted }, `${formatInteger(day.calls)} ${translate("calls")} \xB7 ${formatCompact(day.tokens)} ${translate("tokens")} \xB7 ${formatCost(day.cost)}`)
+      ]),
+      h("section", { key: "sessions", style: styles.section }, [
+        h("h3", { key: "title", style: styles.sectionTitle }, translate("dayDetailSessions")),
+        h(DataTable, {
+          key: "table",
+          columns: sessionColumns(translate),
+          rows: day.sessions,
+          empty: translate("empty"),
+          rowKey: (row) => row.sessionId
+        })
+      ]),
+      h("section", { key: "models", style: styles.section }, [
+        h("h3", { key: "title", style: styles.sectionTitle }, translate("dayDetailModels")),
+        h(DataTable, {
+          key: "table",
+          columns: modelColumns(translate),
+          rows: day.models,
+          empty: translate("empty"),
+          rowKey: (row) => row.key
+        })
+      ])
+    ]);
+  }
+  var METRIC_LABELS = {
+    tokens: "chartMetricTokens",
+    calls: "chartMetricCalls",
+    cost: "chartMetricCost"
+  };
+  function chartValueOf(day, metric) {
+    if (metric === "calls") return day.calls;
+    if (metric === "cost") return day.cost.amount ?? 0;
+    return day.tokens;
+  }
+  function chartLabelOf(day, metric) {
+    if (metric === "cost") return formatCost(day.cost);
+    const value = metric === "calls" ? day.calls : day.tokens;
+    return formatCompact(value);
+  }
+  function DailyChart(props) {
+    const { days, metric, selectedDay, onSelectDay, translate } = props;
+    if (days.length === 0) {
+      return h("div", { style: styles.empty }, [h("p", { key: "title", style: styles.emptyTitle }, translate("chartEmpty"))]);
+    }
+    const max = Math.max(...days.map((day) => chartValueOf(day, metric)));
+    const plotHeight = 160;
+    return h("div", { style: styles.chart }, [
+      h(
+        "div",
+        { key: "plot", style: styles.chartPlot },
+        days.map((day) => {
+          const value = chartValueOf(day, metric);
+          const barHeight = max > 0 ? Math.max(2, value / max * plotHeight) : 2;
+          const selected = selectedDay === day.day;
+          return h(
+            "button",
+            {
+              key: day.day,
+              type: "button",
+              title: `${day.day}: ${chartLabelOf(day, metric)}`,
+              onClick: () => onSelectDay(day.day),
+              style: { ...styles.chartBarCol, position: "relative" }
+            },
+            [
+              h("div", {
+                key: "bar",
+                style: {
+                  ...styles.chartBar,
+                  height: `${barHeight}px`,
+                  ...selected ? styles.chartBarActive : {}
+                }
+              }),
+              h("span", { key: "label", style: styles.chartLabel }, day.day.slice(5))
+            ]
+          );
+        })
+      ),
+      h("p", { key: "hint", style: styles.chartHint }, translate("chartHint"))
+    ]);
   }
   function ProviderCard(props) {
     const { provider, translate } = props;
@@ -890,7 +1113,14 @@
     const translate = props.translate;
     const [tab, setTab] = useState("usage");
     const [range, setRange] = useState("30");
+    const [chartMetric, setChartMetric] = useState("tokens");
+    const [selectedDay, setSelectedDay] = useState(null);
     const { data, error, loading, refresh } = useSummary(range);
+    const { data: dailyData, error: dailyError, loading: dailyLoading, refresh: refreshDaily } = useDaily(range);
+    useEffect(() => {
+      if (dailyData === null || dailyData.days.length === 0) return;
+      setSelectedDay((current) => current === null ? dailyData.days[0].day : current);
+    }, [dailyData]);
     const totals = data?.totals;
     const costIncomplete = data !== null && (data.totals.cost.amount === null || data.totals.cost.unpricedCalls > 0);
     const backfill = data?.backfill;
@@ -921,24 +1151,6 @@
         value: formatPercent(totals?.cacheHitRate),
         note: `${formatCompact(totals?.cacheRead)} ${translate("cacheRead").toLowerCase()}`
       }
-    ];
-    const dayColumns = [
-      { key: "day", label: translate("day"), render: (row) => h("span", { style: styles.cellStrong }, row.day) },
-      { key: "calls", label: translate("calls"), align: "right", render: (row) => numeric(row.calls) },
-      { key: "tokens", label: translate("tokens"), align: "right", render: (row) => numeric(row.tokens) },
-      { key: "cacheHit", label: translate("cacheHit"), align: "right", render: (row) => formatPercent(row.cacheHitRate) },
-      { key: "cost", label: translate("cost"), align: "right", render: (row) => formatCost(row.cost) }
-    ];
-    const sessionColumns = [
-      {
-        key: "sessionId",
-        label: translate("session"),
-        render: (row) => h("span", { title: row.sessionId }, shortSessionId(row.sessionId))
-      },
-      { key: "calls", label: translate("calls"), align: "right", render: (row) => numeric(row.calls) },
-      { key: "tokens", label: translate("tokens"), align: "right", render: (row) => numeric(row.tokens) },
-      { key: "cost", label: translate("cost"), align: "right", render: (row) => formatCost(row.cost) },
-      { key: "lastUsed", label: translate("lastUsed"), align: "right", render: (row) => formatDateTime(row.lastAt) }
     ];
     const tabItems = [
       { id: "usage", label: translate("tabUsage") },
@@ -1002,6 +1214,23 @@
                   style: range === value ? { ...styles.segment, ...styles.segmentActive } : styles.segment
                 },
                 rangeLabel(value, translate)
+              )
+            )
+          ),
+          h(
+            "div",
+            { key: "metrics", style: styles.segmented, role: "group", "aria-label": translate("chartTitle") },
+            ["tokens", "calls", "cost"].map(
+              (metric) => h(
+                "button",
+                {
+                  key: metric,
+                  type: "button",
+                  "aria-pressed": chartMetric === metric,
+                  onClick: () => setChartMetric(metric),
+                  style: chartMetric === metric ? { ...styles.segment, ...styles.segmentActive } : styles.segment
+                },
+                translate(METRIC_LABELS[metric])
               )
             )
           ),
@@ -1075,22 +1304,32 @@
         );
         children.push(
           h("section", { key: "days", style: styles.section }, [
-            h("h2", { key: "title", style: styles.sectionTitle }, translate("byDay")),
-            h(DataTable, {
-              key: "table",
-              columns: dayColumns,
-              rows: data.byDay.slice(0, 31),
-              empty: translate("empty"),
-              rowKey: (row) => row.day
+            h("h2", { key: "title", style: styles.sectionTitle }, translate("chartTitle")),
+            h(DailyChart, {
+              key: "chart",
+              days: dailyData?.days ?? [],
+              metric: chartMetric,
+              selectedDay,
+              onSelectDay: setSelectedDay,
+              translate
             })
           ])
         );
+        if (dailyError !== null) {
+          children.push(
+            h("div", { key: "daily-error", style: styles.noticeError, role: "alert" }, `${translate("loadFailed")} \xB7 ${dailyError}`)
+          );
+        }
+        const dayDetail = dailyData?.days.find((day) => day.day === selectedDay);
+        if (dayDetail !== void 0) {
+          children.push(h(DayDetail, { key: "day-detail", day: dayDetail, translate }));
+        }
         children.push(
           h("section", { key: "sessions", style: styles.section }, [
             h("h2", { key: "title", style: styles.sectionTitle }, translate("sessions")),
             h(DataTable, {
               key: "table",
-              columns: sessionColumns,
+              columns: sessionColumns(translate),
               rows: data.sessions,
               empty: translate("empty"),
               rowKey: (row) => row.sessionId

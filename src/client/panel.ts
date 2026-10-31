@@ -10,6 +10,8 @@ import type { ReactNode } from 'react'
 import type { AccountBalance, AccountsPayload, AccountView, BudgetWindow } from '../host/accounts/types.js'
 import type {
   CostRender,
+  DailyPayload,
+  DayDetailView,
   DayUsageView,
   ModelUsageView,
   ProviderUsageView,
@@ -21,6 +23,7 @@ import type { LocaleLike, Translate } from './i18n.js'
 import { h, useCallback, useEffect, useState, useSyncExternalStore } from './react.js'
 
 const SUMMARY_URL = '/token-usage-statistic/api/summary'
+const DAILY_URL = '/token-usage-statistic/api/daily'
 const DEFAULT_REFRESH_MS = 15000
 
 /** Selectable trailing window; `all` means everything. */
@@ -294,6 +297,68 @@ const styles: Record<string, Record<string, string | number>> = {
     textDecoration: 'none',
   },
   exportHint: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary, inherit)' },
+  chart: {
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: '960px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  chartPlot: {
+    boxSizing: 'border-box',
+    width: '100%',
+    height: '180px',
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: '3px',
+    padding: '8px 0 28px',
+    borderBottom: '0.5px solid var(--dsw-alias-border-l1, #e2e2e2)',
+  },
+  chartBarCol: {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: '4px',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  chartBar: {
+    width: '100%',
+    maxWidth: '24px',
+    minHeight: '2px',
+    borderRadius: '4px 4px 0 0',
+    background: 'var(--dsw-alias-bg-layer-2, rgba(0,0,0,0.08))',
+  },
+  chartBarActive: {
+    background: 'var(--dsw-alias-brand-primary, #2563eb)',
+  },
+  chartLabel: {
+    position: 'absolute',
+    bottom: '-22px',
+    left: '50%',
+    transform: 'translateX(-50%) rotate(-35deg)',
+    transformOrigin: 'left top',
+    fontSize: '10px',
+    color: 'var(--dsw-alias-label-secondary, inherit)',
+    whiteSpace: 'nowrap',
+  },
+  chartHint: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-secondary, inherit)' },
+  dayDetail: {
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: '960px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  dayDetailHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px' },
 }
 
 interface Column<T> {
@@ -433,7 +498,63 @@ function rangeLabel(range: SummaryRange, translate: Translate): string {
   return translate('rangeAll')
 }
 
-/** Model table columns, shared by every provider card. */
+interface DailyState {
+  data: DailyPayload | null
+  error: string | null
+  loading: boolean
+  refresh: () => void
+}
+
+/** Read the daily drill-down snapshot with polling. */
+function useDaily(range: SummaryRange): DailyState {
+  const [data, setData] = useState<DailyPayload | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [nonce, setNonce] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async (): Promise<void> => {
+      try {
+        const response = await fetch(`${DAILY_URL}?days=${encodeURIComponent(range)}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const payload = (await response.json()) as DailyPayload
+        if (cancelled) return
+        setData(payload)
+        setError(null)
+      } catch (cause) {
+        if (cancelled) return
+        if (cause !== null && typeof cause === 'object' && (cause as { name?: string }).name === 'AbortError') return
+        setError(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    setLoading(true)
+    void load()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [range, nonce])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      setNonce((value) => value + 1)
+    }, DEFAULT_REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [])
+
+  const refresh = useCallback(() => setNonce((value) => value + 1), [])
+  return { data, error, loading, refresh }
+}
+
+/** Model table columns, shared by every provider card and day detail. */
 function modelColumns(translate: Translate): Column<ModelUsageView>[] {
   return [
     { key: 'model', label: translate('model'), render: (row) => h('span', { style: styles.cellStrong, title: row.key }, row.model) },
@@ -442,6 +563,121 @@ function modelColumns(translate: Translate): Column<ModelUsageView>[] {
     { key: 'cacheHit', label: translate('cacheHit'), align: 'right', render: (row) => formatPercent(row.cacheHitRate) },
     { key: 'cost', label: translate('cost'), align: 'right', render: (row) => formatCost(row.cost) },
   ]
+}
+
+/** Session table columns, shared by the usage list and day detail. */
+function sessionColumns(translate: Translate): Column<SessionUsageView>[] {
+  return [
+    {
+      key: 'sessionId',
+      label: translate('session'),
+      render: (row) => h('span', { title: row.sessionId }, shortSessionId(row.sessionId)),
+    },
+    { key: 'calls', label: translate('calls'), align: 'right', render: (row) => numeric(row.calls) },
+    { key: 'tokens', label: translate('tokens'), align: 'right', render: (row) => numeric(row.tokens) },
+    { key: 'cost', label: translate('cost'), align: 'right', render: (row) => formatCost(row.cost as CostRender) },
+    { key: 'lastUsed', label: translate('lastUsed'), align: 'right', render: (row) => formatDateTime(row.lastAt) },
+  ]
+}
+
+/** Drill-down tables for one selected day. */
+function DayDetail(props: { day: DayDetailView; translate: Translate }) {
+  const { day, translate } = props
+  return h('div', { style: styles.dayDetail }, [
+    h('div', { key: 'head', style: styles.dayDetailHead }, [
+      h('h2', { key: 'title', style: styles.sectionTitle }, translate('dayDetailTitle').replace('{{day}}', day.day)),
+      h('span', { key: 'summary', style: styles.cellMuted }, `${formatInteger(day.calls)} ${translate('calls')} · ${formatCompact(day.tokens)} ${translate('tokens')} · ${formatCost(day.cost)}`),
+    ]),
+    h('section', { key: 'sessions', style: styles.section }, [
+      h('h3', { key: 'title', style: styles.sectionTitle }, translate('dayDetailSessions')),
+      h(DataTable<SessionUsageView>, {
+        key: 'table',
+        columns: sessionColumns(translate),
+        rows: day.sessions,
+        empty: translate('empty'),
+        rowKey: (row: SessionUsageView) => row.sessionId,
+      }),
+    ]),
+    h('section', { key: 'models', style: styles.section }, [
+      h('h3', { key: 'title', style: styles.sectionTitle }, translate('dayDetailModels')),
+      h(DataTable<ModelUsageView>, {
+        key: 'table',
+        columns: modelColumns(translate),
+        rows: day.models,
+        empty: translate('empty'),
+        rowKey: (row: ModelUsageView) => row.key,
+      }),
+    ]),
+  ])
+}
+
+type ChartMetric = 'tokens' | 'calls' | 'cost'
+
+const METRIC_LABELS: Record<ChartMetric, string> = {
+  tokens: 'chartMetricTokens',
+  calls: 'chartMetricCalls',
+  cost: 'chartMetricCost',
+}
+
+function chartValueOf(day: DayDetailView, metric: ChartMetric): number {
+  if (metric === 'calls') return day.calls
+  if (metric === 'cost') return day.cost.amount ?? 0
+  return day.tokens
+}
+
+function chartLabelOf(day: DayDetailView, metric: ChartMetric): string {
+  if (metric === 'cost') return formatCost(day.cost)
+  const value = metric === 'calls' ? day.calls : day.tokens
+  return formatCompact(value)
+}
+
+/** Simple flex bar chart with dates below each bar. */
+function DailyChart(props: {
+  days: DayDetailView[]
+  metric: ChartMetric
+  selectedDay: string | null
+  onSelectDay: (day: string) => void
+  translate: Translate
+}) {
+  const { days, metric, selectedDay, onSelectDay, translate } = props
+  if (days.length === 0) {
+    return h('div', { style: styles.empty }, [h('p', { key: 'title', style: styles.emptyTitle }, translate('chartEmpty'))])
+  }
+  const max = Math.max(...days.map((day) => chartValueOf(day, metric)))
+  const plotHeight = 160
+  return h('div', { style: styles.chart }, [
+    h(
+      'div',
+      { key: 'plot', style: styles.chartPlot },
+      days.map((day) => {
+        const value = chartValueOf(day, metric)
+        const barHeight = max > 0 ? Math.max(2, (value / max) * plotHeight) : 2
+        const selected = selectedDay === day.day
+        return h(
+          'button',
+          {
+            key: day.day,
+            type: 'button',
+            title: `${day.day}: ${chartLabelOf(day, metric)}`,
+            onClick: () => onSelectDay(day.day),
+            style: { ...styles.chartBarCol, position: 'relative' },
+          },
+          [
+            h('div', {
+              key: 'bar',
+              style: {
+                ...styles.chartBar,
+                height: `${barHeight}px`,
+                ...(selected ? styles.chartBarActive : {}),
+              },
+            }),
+            h('span', { key: 'label', style: styles.chartLabel }, day.day.slice(5)),
+          ],
+        )
+      }),
+    ),
+    h('p', { key: 'hint', style: styles.chartHint }, translate('chartHint')),
+  ])
 }
 
 /** One provider group with its model ranking. */
@@ -719,7 +955,15 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
   const translate = props.translate
   const [tab, setTab] = useState<PanelTab>('usage')
   const [range, setRange] = useState<SummaryRange>('30')
+  const [chartMetric, setChartMetric] = useState<ChartMetric>('tokens')
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const { data, error, loading, refresh } = useSummary(range)
+  const { data: dailyData, error: dailyError, loading: dailyLoading, refresh: refreshDaily } = useDaily(range)
+
+  useEffect(() => {
+    if (dailyData === null || dailyData.days.length === 0) return
+    setSelectedDay((current) => (current === null ? dailyData.days[0].day : current))
+  }, [dailyData])
 
   const totals = data?.totals
   const costIncomplete = data !== null && (data.totals.cost.amount === null || data.totals.cost.unpricedCalls > 0)
@@ -752,26 +996,6 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
       value: formatPercent(totals?.cacheHitRate),
       note: `${formatCompact(totals?.cacheRead)} ${translate('cacheRead').toLowerCase()}`,
     },
-  ]
-
-  const dayColumns: Column<DayUsageView>[] = [
-    { key: 'day', label: translate('day'), render: (row) => h('span', { style: styles.cellStrong }, row.day) },
-    { key: 'calls', label: translate('calls'), align: 'right', render: (row) => numeric(row.calls) },
-    { key: 'tokens', label: translate('tokens'), align: 'right', render: (row) => numeric(row.tokens) },
-    { key: 'cacheHit', label: translate('cacheHit'), align: 'right', render: (row) => formatPercent(row.cacheHitRate) },
-    { key: 'cost', label: translate('cost'), align: 'right', render: (row) => formatCost(row.cost) },
-  ]
-
-  const sessionColumns: Column<SessionUsageView>[] = [
-    {
-      key: 'sessionId',
-      label: translate('session'),
-      render: (row) => h('span', { title: row.sessionId }, shortSessionId(row.sessionId)),
-    },
-    { key: 'calls', label: translate('calls'), align: 'right', render: (row) => numeric(row.calls) },
-    { key: 'tokens', label: translate('tokens'), align: 'right', render: (row) => numeric(row.tokens) },
-    { key: 'cost', label: translate('cost'), align: 'right', render: (row) => formatCost(row.cost as CostRender) },
-    { key: 'lastUsed', label: translate('lastUsed'), align: 'right', render: (row) => formatDateTime(row.lastAt) },
   ]
 
   const tabItems: Array<{ id: PanelTab; label: string }> = [
@@ -840,6 +1064,23 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
                 style: range === value ? { ...styles.segment, ...styles.segmentActive } : styles.segment,
               },
               rangeLabel(value, translate),
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { key: 'metrics', style: styles.segmented, role: 'group', 'aria-label': translate('chartTitle') },
+          (['tokens', 'calls', 'cost'] as ChartMetric[]).map((metric) =>
+            h(
+              'button',
+              {
+                key: metric,
+                type: 'button',
+                'aria-pressed': chartMetric === metric,
+                onClick: () => setChartMetric(metric),
+                style: chartMetric === metric ? { ...styles.segment, ...styles.segmentActive } : styles.segment,
+              },
+              translate(METRIC_LABELS[metric]),
             ),
           ),
         ),
@@ -918,22 +1159,32 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
       )
       children.push(
         h('section', { key: 'days', style: styles.section }, [
-          h('h2', { key: 'title', style: styles.sectionTitle }, translate('byDay')),
-          h(DataTable<DayUsageView>, {
-            key: 'table',
-            columns: dayColumns,
-            rows: data.byDay.slice(0, 31),
-            empty: translate('empty'),
-            rowKey: (row: DayUsageView) => row.day,
+          h('h2', { key: 'title', style: styles.sectionTitle }, translate('chartTitle')),
+          h(DailyChart, {
+            key: 'chart',
+            days: dailyData?.days ?? [],
+            metric: chartMetric,
+            selectedDay,
+            onSelectDay: setSelectedDay,
+            translate,
           }),
         ]),
       )
+      if (dailyError !== null) {
+        children.push(
+          h('div', { key: 'daily-error', style: styles.noticeError, role: 'alert' }, `${translate('loadFailed')} · ${dailyError}`),
+        )
+      }
+      const dayDetail = dailyData?.days.find((day) => day.day === selectedDay)
+      if (dayDetail !== undefined) {
+        children.push(h(DayDetail, { key: 'day-detail', day: dayDetail, translate }))
+      }
       children.push(
         h('section', { key: 'sessions', style: styles.section }, [
           h('h2', { key: 'title', style: styles.sectionTitle }, translate('sessions')),
           h(DataTable<SessionUsageView>, {
             key: 'table',
-            columns: sessionColumns,
+            columns: sessionColumns(translate),
             rows: data.sessions,
             empty: translate('empty'),
             rowKey: (row: SessionUsageView) => row.sessionId,

@@ -127,6 +127,30 @@ describe('usage fold', () => {
     expect(store.lastSeq('missing')).toBe(-1)
   })
 
+  it('produces daily drill-downs with per-day sessions and models', () => {
+    const store = new UsageStore({ pricer: fakePricer(proportional) })
+    const now = Date.now()
+    store.apply(makeSample({ time: now, sessionId: 's1', seq: 1, sampleKey: '1:1' }))
+    store.apply(
+      makeSample({
+        time: now,
+        sessionId: 's2',
+        seq: 1,
+        sampleKey: '1:1',
+        provider: 'other',
+        model: 'other-model',
+        buckets: { input: 500, output: 100, cacheRead: 0, cacheWrite: 0 },
+      }),
+    )
+
+    const details = store.dailyDetails({ days: 1, now })
+    expect(details.days).toHaveLength(1)
+    expect(details.days[0].calls).toBe(2)
+    expect(details.days[0].sessions).toHaveLength(2)
+    expect(details.days[0].models).toHaveLength(2)
+    expect(details.days[0].sessions[0].sessionId).toBe('s1')
+  })
+
   it('produces a JSON-safe snapshot detached from the fold', () => {
     const store = new UsageStore({ pricer: fakePricer() })
     store.apply(makeSample({ time: Date.now() }))

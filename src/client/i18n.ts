@@ -85,6 +85,15 @@ const EN: Record<string, string> = {
   exportSessionsHint: 'One row per session with its providers and models.',
   exportJson: 'Versioned JSON',
   exportJsonHint: 'Usage, budgets and account snapshots in one document.',
+  chartTitle: 'Daily usage',
+  chartMetricTokens: 'Tokens',
+  chartMetricCalls: 'Calls',
+  chartMetricCost: 'Cost',
+  chartHint: 'Click a bar to view the details for that day.',
+  chartEmpty: 'No daily usage to chart yet.',
+  dayDetailTitle: 'Details for {{day}}',
+  dayDetailSessions: 'Sessions',
+  dayDetailModels: 'Models',
 }
 
 const ZH: Record<string, string> = {
@@ -162,6 +171,15 @@ const ZH: Record<string, string> = {
   exportSessionsHint: '每行一个会话及其提供方与模型。',
   exportJson: '版本化 JSON',
   exportJsonHint: '用量、预算与账户快照合成一份文档。',
+  chartTitle: '每日用量',
+  chartMetricTokens: 'Tokens',
+  chartMetricCalls: '调用次数',
+  chartMetricCost: '预估费用',
+  chartHint: '点击柱状图查看当天的详情。',
+  chartEmpty: '尚无每日用量数据。',
+  dayDetailTitle: '{{day}} 详情',
+  dayDetailSessions: '会话',
+  dayDetailModels: '模型',
 }
 
 /** The locale service subset this plugin uses. */
