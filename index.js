@@ -15,6 +15,7 @@
  * private, rebuildable cache of the usage reported for it.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -53,6 +54,29 @@ function warn(...values) {
 function describeError(error) {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/**
+ * Write a tiny activation receipt beside the ledger.
+ *
+ * The HTTP surface is the one part of activation whose failure is silent in a
+ * GUI-only deployment: a route that never registered looks exactly like a route
+ * that answered 404. This file records which branch ran, so a support question
+ * ("the panel says HTTP 404") can be answered from disk.
+ *
+ * @param {string} dataFile - ledger path, whose directory hosts the receipt.
+ * @returns {(patch: Record<string, unknown>) => Promise<void>} recorder.
+ */
+function createActivationRecorder(dataFile) {
+  const file = path.join(path.dirname(dataFile), 'activation.json')
+  return async function record(patch) {
+    try {
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, `${JSON.stringify({ at: Date.now(), dataFile, ...patch }, null, 2)}\n`, 'utf8')
+    } catch (error) {
+      warn('activation receipt could not be written:', describeError(error))
+    }
+  }
 }
 
 /**
@@ -108,6 +132,7 @@ export async function apply(ctx, config) {
   const dataFile = settings.dataFile || defaultDataFile()
   const store = new UsageStore({ recentLimit: settings.recentLimit })
   const ledger = new LedgerWriter(dataFile, { onError: (error) => warn('ledger append failed:', describeError(error)) })
+  const recordActivation = createActivationRecorder(dataFile)
 
   try {
     const loaded = await loadLedger(dataFile)
@@ -137,6 +162,17 @@ export async function apply(ctx, config) {
 
   ctx.inject(['webServer'], (scope) => {
     const handler = createHttpHandler({ store, config: settings })
-    scope.effect(() => scope.webServer.register({ kind: 'prefix', path: API_PREFIX, handler }))
+    try {
+      const server = scope.webServer
+      const origin = typeof server.getOrigin === 'function' ? server.getOrigin() : undefined
+      // Exact paths only: this deployment accepts a `prefix` registration but
+      // never dispatches it (verified against the running Web carrier), and the
+      // panel needs exactly one endpoint anyway.
+      scope.effect(() => server.register({ kind: 'exact', path: `${API_PREFIX}api/summary`, handler }))
+      void recordActivation({ route: 'registered', origin, paths: [`${API_PREFIX}api/summary`] })
+    } catch (error) {
+      warn('web route registration failed:', describeError(error))
+      void recordActivation({ route: 'failed', error: describeError(error) })
+    }
   })
 }

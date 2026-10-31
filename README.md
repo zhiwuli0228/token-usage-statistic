@@ -39,7 +39,7 @@ Session 日志（DSH 的真相来源）
 - **账本是唯一可重建的来源**。内存里的 `UsageStore` 是从账本重放出来的派生态；删掉账本等于清空统计，重放账本必定得到同一份聚合。
 - **只读取已提交的事件**。用量取自 `assistant/message.usage`，因此统计口径是「模型真正返回并提交的消息」，重试中失败、未提交的请求不会被计费式地重复统计。
 - **去重键是 `sessionId#seq`**。同一个会话事件被重放（重启、HMR、将来的历史回填）不会重复累加。
-- **同源 HTTP 而不是生成式 Remote**。本仓库是零构建的原生 ESM，没有 typert 代码生成；一条独立前缀的只读路由足以支撑面板，也不会遮蔽任何内置路径。
+- **同源 HTTP 而不是生成式 Remote**。本仓库是零构建的原生 ESM，没有 typert 代码生成；一条独立路径的只读路由足以支撑面板，也不会遮蔽任何内置路径。该路由必须注册为 `exact`：当前 Web 载体接受 `prefix` 注册但不会派发它。
 
 ## 目录
 
@@ -54,7 +54,7 @@ src/host/http.js            只读 HTTP 接口
 locale/{en,zh}.json         Plugin Manager / 设置页展示用的标题与描述
 icon.svg                    插件图标
 cordis.patch.yml            bundle 的 Loader 插入行
-test/                       node:test 单元测试（55 个）
+test/                       node:test 单元测试（62 个，含客户端冒烟测试）
 ```
 
 ## 安装
@@ -134,11 +134,20 @@ plugin_manager( action: "install_bundle", target: "E:\\009workspace\\dsh\\token-
 ## 开发
 
 ```powershell
-node --test          # 55 个单元测试
+node --test          # 62 个单元测试
 node --check index.js; node --check client.js   # 语法检查
 ```
 
 无构建步骤：Host 半是原生 ESM，Client 半由 `window.__ModuleLoader__` 直接加载，React 来自浏览器的共享模块表（`require('react')`），不安装第二份 React。
+
+本仓库以**链接方式**安装到 profile，因此改完源码后不需要重新打包：用插件管理器把 `include:token-usage-statistic` 这一行禁用再启用，Host 会重新导入模块（已验证），Client 侧通常刷新页面即可。改动 `package.json` 的 `dsh.client` 元数据才需要重装。
+
+## 排障
+
+- **面板显示「统计数据加载失败 · HTTP 404」**：说明 Host 的路由没有注册上。看数据目录里的 `activation.json`：`route: "registered"` 表示路由已注册并记录 `origin`；`route: "failed"` 会带原因。如果文件不存在，说明 `webServer` 服务没有注入成功（该 profile 没有 Web 载体）。
+- **面板显示空态**：只统计插件激活后提交的助手消息；发一条消息再点刷新。
+- **数据在哪**：默认 `%DSH_HOME%\token-usage-statistic\usage.jsonl`；同目录的 `activation.json` 只是激活回执，可以随时删除。
+- **想清空统计**：停用插件，删除 `usage.jsonl`，再启用。
 
 ## 已知限制
 
