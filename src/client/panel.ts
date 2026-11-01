@@ -18,7 +18,7 @@ import type {
   SessionUsageView,
   UsageSnapshot,
 } from '../host/types.js'
-import { DAILY_URL, SUMMARY_URL, readCache, writeCache } from './cache.js'
+import { DAILY_URL, SUMMARY_URL, prefetchRanges, readCache, writeCache } from './cache.js'
 import { formatClock, formatCompact, formatCost, formatDateTime, formatInteger, formatMoney, formatPercent, shortSessionId } from './format.js'
 import type { LocaleLike, Translate } from './i18n.js'
 import { h, useCallback, useEffect, useRef, useState, useSyncExternalStore } from './react.js'
@@ -1178,6 +1178,11 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const { data, error, loading, phase, refresh } = useSummary(range)
   const { data: dailyData, error: dailyError, phase: dailyPhase } = useDaily(range)
+
+  useEffect(() => {
+    const timer = setTimeout(() => prefetchRanges(), 800)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (dailyData === null || dailyData.days.length === 0) return

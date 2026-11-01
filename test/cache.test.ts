@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { prefetchToday, readCache, writeCache } from '../src/client/cache.js'
+import { prefetchRanges, prefetchToday, readCache, writeCache } from '../src/client/cache.js'
 
 class MemoryStorage {
   private readonly map = new Map<string, string>()
@@ -79,5 +79,25 @@ describe('snapshot cache', () => {
 
     expect(readCache('summary:1')).toEqual({ schemaVersion: 2, kind: 'summary' })
     expect(readCache('daily:1')).toEqual({ schemaVersion: 2, kind: 'daily' })
+  })
+
+  it('prefetches the 7 and 30 day windows', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      return {
+        ok: true,
+        async json() {
+          return url.includes('summary') ? { schemaVersion: 2, kind: 'summary' } : { schemaVersion: 2, kind: 'daily' }
+        },
+      }
+    }) as unknown as typeof fetch
+
+    prefetchRanges()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    for (const days of [7, 30]) {
+      expect(readCache(`summary:${days}`)).toEqual({ schemaVersion: 2, kind: 'summary' })
+      expect(readCache(`daily:${days}`)).toEqual({ schemaVersion: 2, kind: 'daily' })
+    }
   })
 })

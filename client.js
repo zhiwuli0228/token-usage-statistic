@@ -48,6 +48,29 @@
       }
     })();
   }
+  var RANGE_PREFETCH = [7, 30];
+  var prefetchingRanges = false;
+  function prefetchRanges() {
+    if (typeof fetch !== "function" || prefetchingRanges) return;
+    prefetchingRanges = true;
+    void (async () => {
+      try {
+        for (const days of RANGE_PREFETCH) {
+          if (readCache(`summary:${days}`) === null) {
+            const response = await fetch(`${SUMMARY_URL}?days=${days}&recent=20`, { cache: "no-store" });
+            if (response.ok) writeCache(`summary:${days}`, await response.json());
+          }
+          if (readCache(`daily:${days}`) === null) {
+            const response = await fetch(`${DAILY_URL}?days=${days}`, { cache: "no-store" });
+            if (response.ok) writeCache(`daily:${days}`, await response.json());
+          }
+        }
+      } catch {
+      } finally {
+        prefetchingRanges = false;
+      }
+    })();
+  }
 
   // src/client/i18n.ts
   var NS = "token-usage-statistic";
@@ -1341,6 +1364,10 @@
     const [selectedDay, setSelectedDay] = useState(null);
     const { data, error, loading, phase, refresh } = useSummary(range);
     const { data: dailyData, error: dailyError, phase: dailyPhase } = useDaily(range);
+    useEffect(() => {
+      const timer = setTimeout(() => prefetchRanges(), 800);
+      return () => clearTimeout(timer);
+    }, []);
     useEffect(() => {
       if (dailyData === null || dailyData.days.length === 0) return;
       setSelectedDay((current) => current === null ? dailyData.days[0].day : current);

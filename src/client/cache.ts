@@ -73,3 +73,35 @@ export function prefetchToday(): void {
     }
   })()
 }
+
+const RANGE_PREFETCH = [7, 30] as const
+let prefetchingRanges = false
+
+/**
+ * Warm the wider windows after the panel is open.
+ *
+ * Runs at most once at a time and only fills missing entries, so opening the
+ * plugin page does not create a burst of duplicate requests.
+ */
+export function prefetchRanges(): void {
+  if (typeof fetch !== 'function' || prefetchingRanges) return
+  prefetchingRanges = true
+  void (async () => {
+    try {
+      for (const days of RANGE_PREFETCH) {
+        if (readCache(`summary:${days}`) === null) {
+          const response = await fetch(`${SUMMARY_URL}?days=${days}&recent=20`, { cache: 'no-store' })
+          if (response.ok) writeCache(`summary:${days}`, await response.json())
+        }
+        if (readCache(`daily:${days}`) === null) {
+          const response = await fetch(`${DAILY_URL}?days=${days}`, { cache: 'no-store' })
+          if (response.ok) writeCache(`daily:${days}`, await response.json())
+        }
+      }
+    } catch {
+      /* prefetch is best-effort */
+    } finally {
+      prefetchingRanges = false
+    }
+  })()
+}
