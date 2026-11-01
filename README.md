@@ -94,6 +94,8 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 
 插件是 **bundle 包**：`package.json` 同时声明 `dsh.bundle.patch` 和 `dsh.client.platform: "web"`。Host 负责采集、计价、账本和账户查询，Client 是同一份 Web 面板；Desktop 与 Web 加载同一份 `index.js` / `client.js`。
 
+> Desktop 与 Web 使用不同的 profile（`desktop` / `web`），安装是分开的：在 Desktop 安装不会自动出现在 Web，反之亦然。两端都需要时，各装一次。
+
 ### 前置条件
 
 - Node.js >= 20（从源码构建或本地开发时需要）
