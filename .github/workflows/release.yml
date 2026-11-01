@@ -92,12 +92,17 @@ jobs:
 
       # `npm publish --dry-run` still consults the registry, so running it against an
       # already-published version fails with "You cannot publish over the previously
-      # published versions" (exit 1). That is the intended use: dispatch this against
-      # a bumped-but-unreleased version to confirm the tarball and metadata before
-      # tagging. Exit 0 there means the real publish will pack the same files.
+      # published versions" (exit 1). Skip that case so a manual dry run stays useful
+      # for re-checking an existing release without bumping the version first.
       - name: Publish (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry-run
         run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already published; skipping dry-run publish."
+            exit 0
+          fi
           npm publish --access public --dry-run
           echo "dry run: nothing was published."
 
