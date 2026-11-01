@@ -14,6 +14,12 @@ DeepSeek Harness（DSH）插件：统计**本机所有模型调用**的 token �
 | --- | --- |
 | ![账户](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/accounts.png) | ![导出](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/export.png) |
 
+## 文档
+
+项目级文档入口：[docs/README.md](https://github.com/zhiwuli0228/token-usage-statistic/blob/main/docs/README.md)
+
+包含架构、存储契约、Harness 规则、开发规范、领域规则、安装/发布/排障、ADR 模板。
+
 ## 能力
 
 | 能力 | 说明 |
