@@ -4,6 +4,8 @@ This directory is the **project-level Harness Context Hub**.
 
 It is used by humans and AI agents to understand project state, architecture, constraints, change rules, development standards, and domain behavior.
 
+The agent entry contract is `AGENTS.md` at the repository root. Read it before this file; it defines the hard constraints and the precedence order.
+
 ## Reading Policy
 
 Do not read every document blindly. Read documents based on task type.

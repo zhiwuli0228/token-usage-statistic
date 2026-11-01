@@ -4,6 +4,10 @@
 
 The harness keeps AI-assisted development aligned with the project's architecture, privacy boundary, verification expectations, and release policy.
 
+## Entry Contract
+
+`AGENTS.md` at the repository root is the entry contract for all agent work. It defines the required reading order, hard constraints, verification commands, and finalization checklist. This document explains the harness; `AGENTS.md` states what must not be violated.
+
 ## Harness Layers
 
 ### 1. Context Layer
