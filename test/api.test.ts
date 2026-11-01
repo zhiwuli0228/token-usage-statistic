@@ -20,9 +20,9 @@ function fakeResponse() {
   }
 }
 
-function call(handler: (request: any, response: any) => void, method: string, url: string, remoteAddress?: string) {
+async function call(handler: (request: any, response: any) => void | Promise<void>, method: string, url: string, remoteAddress?: string) {
   const response = fakeResponse()
-  handler({ method, url, ...(remoteAddress === undefined ? {} : { socket: { remoteAddress } }) }, response)
+  await handler({ method, url, ...(remoteAddress === undefined ? {} : { socket: { remoteAddress } }) }, response)
   return response.state
 }
 
@@ -35,6 +35,7 @@ const budgets: BudgetState = {
 function storeStub(overrides: Record<string, unknown> = {}) {
   return {
     snapshot: vi.fn(() => ({ ok: true })),
+    sessionIds: () => ['session-1'],
     dailyDetails: vi.fn(() => ({
       schemaVersion: 2,
       generatedAt: 1234,
@@ -98,6 +99,7 @@ function handlerWith(options: { store?: UsageStore; refresh?: () => void } = {})
     backfill: () => IDLE_BACKFILL,
     accounts: () => ({ schemaVersion: 1, generatedAt: 1, refreshMs: 600000, refreshing: false, accounts: [] }),
     budgets: () => budgets,
+    sessionNames: { refresh: vi.fn(async () => {}), get: () => ({}) },
     refreshAccounts: options.refresh ?? (() => {}),
     refreshMs: 20000,
     now: () => 1234,
@@ -125,18 +127,18 @@ describe('loopback guard', () => {
     expect(isLoopbackRequest({ socket: { remoteAddress: '::ffff:127.0.0.1' } } as never)).toBe(true)
   })
 
-  it('rejects a remote peer', () => {
+  it('rejects a remote peer', async () => {
     expect(isLoopbackRequest({ socket: { remoteAddress: '10.1.2.3' } } as never)).toBe(false)
-    const response = call(handlerWith(), 'GET', ROUTES.summary, '10.1.2.3')
+    const response = await call(handlerWith(), 'GET', ROUTES.summary, '10.1.2.3')
     expect(response.status).toBe(403)
   })
 })
 
 describe('summary route', () => {
-  it('serves the snapshot with budgets for the requested range', () => {
+  it('serves the snapshot with budgets for the requested range', async () => {
     const store = storeStub()
     const handler = handlerWith({ store })
-    const response = call(handler, 'GET', `${ROUTES.summary}?days=7&sessions=5&recent=3`)
+    const response = await call(handler, 'GET', `${ROUTES.summary}?days=7&sessions=5&recent=3`)
 
     expect(response.status).toBe(200)
     expect(response.headers['cache-control']).toBe('no-store')
@@ -145,34 +147,34 @@ describe('summary route', () => {
     )
   })
 
-  it('rejects unknown paths and methods', () => {
+  it('rejects unknown paths and methods', async () => {
     const handler = handlerWith()
-    expect(call(handler, 'GET', `${ROUTES.summary}/nope`).status).toBe(404)
-    expect(call(handler, 'POST', ROUTES.summary).status).toBe(405)
+    expect((await call(handler, 'GET', `${ROUTES.summary}/nope`)).status).toBe(404)
+    expect((await call(handler, 'POST', ROUTES.summary)).status).toBe(405)
   })
 
-  it('answers HEAD without a body', () => {
-    const response = call(handlerWith(), 'HEAD', ROUTES.summary)
+  it('answers HEAD without a body', async () => {
+    const response = await call(handlerWith(), 'HEAD', ROUTES.summary)
     expect(response.status).toBe(200)
     expect(response.body).toBe('')
   })
 
-  it('converts a fold failure into a 500', () => {
+  it('converts a fold failure into a 500', async () => {
     const store = storeStub({
       snapshot: () => {
         throw new Error('boom')
       },
     })
-    const response = call(handlerWith({ store }), 'GET', ROUTES.summary)
+    const response = await call(handlerWith({ store }), 'GET', ROUTES.summary)
     expect(response.status).toBe(500)
   })
 })
 
 describe('accounts route', () => {
-  it('serves the account snapshot and triggers a refresh on demand', () => {
+  it('serves the account snapshot and triggers a refresh on demand', async () => {
     const refresh = vi.fn()
     const handler = handlerWith({ refresh })
-    const response = call(handler, 'GET', `${ROUTES.accounts}?refresh=1`)
+    const response = await call(handler, 'GET', `${ROUTES.accounts}?refresh=1`)
     expect(response.status).toBe(200)
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(JSON.parse(response.body)).toMatchObject({ schemaVersion: 1, accounts: [] })
@@ -180,10 +182,10 @@ describe('accounts route', () => {
 })
 
 describe('daily route', () => {
-  it('serves per-day details with sessions and models', () => {
+  it('serves per-day details with sessions and models', async () => {
     const store = storeStub()
     const handler = handlerWith({ store })
-    const response = call(handler, 'GET', ROUTES.daily)
+    const response = await call(handler, 'GET', ROUTES.daily)
     expect(response.status).toBe(200)
     expect(store.dailyDetails).toHaveBeenCalledWith(expect.objectContaining({ days: 30 }))
     const body = JSON.parse(response.body)
@@ -193,8 +195,8 @@ describe('daily route', () => {
 })
 
 describe('export routes', () => {
-  it('serves a BOM-prefixed daily CSV as a download', () => {
-    const response = call(handlerWith(), 'GET', ROUTES.exportDaily)
+  it('serves a BOM-prefixed daily CSV as a download', async () => {
+    const response = await call(handlerWith(), 'GET', ROUTES.exportDaily)
     expect(response.status).toBe(200)
     expect(response.headers['content-type']).toMatch(/text\/csv/)
     expect(response.headers['content-disposition']).toContain('token-usage-daily.csv')
@@ -202,14 +204,14 @@ describe('export routes', () => {
     expect(response.body).toContain('"2026-10-31","deepseek","deepseek-flash"')
   })
 
-  it('serves a sessions CSV', () => {
-    const response = call(handlerWith(), 'GET', ROUTES.exportSessions)
+  it('serves a sessions CSV', async () => {
+    const response = await call(handlerWith(), 'GET', ROUTES.exportSessions)
     expect(response.status).toBe(200)
     expect(response.body).toContain('"session-1"')
   })
 
-  it('serves a versioned JSON export', () => {
-    const response = call(handlerWith(), 'GET', ROUTES.exportJson)
+  it('serves a versioned JSON export', async () => {
+    const response = await call(handlerWith(), 'GET', ROUTES.exportJson)
     expect(response.status).toBe(200)
     const body = JSON.parse(response.body)
     expect(body.schemaVersion).toBe('1.0.0')

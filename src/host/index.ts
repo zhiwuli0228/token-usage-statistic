@@ -22,6 +22,7 @@ import { Collector } from './collector.js'
 import { defaultDataFile, resolveConfig } from './config.js'
 import { LedgerWriter, loadLedger } from './ledger.js'
 import { createPricer } from './pricing.js'
+import { SessionNameService, type SessionQueryLike, type WorkspaceLike } from './sessionNames.js'
 import { UsageStore } from './store.js'
 import type { BackfillStatus } from './types.js'
 import type { EventLike } from './usage.js'
@@ -85,6 +86,7 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
   const store = new UsageStore({ pricer, recentLimit: settings.recentLimit })
   const ledger = new LedgerWriter(dataFile, { onError: (error) => warn('ledger append failed:', describeError(error)) })
   const collector = new Collector()
+  const sessionNames = new SessionNameService({ log: (message) => warn(message) })
   let backfill: Backfill | undefined
   let registry: AccountRegistry | undefined
 
@@ -127,6 +129,7 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
         void registry?.refresh()
       },
       refreshMs: settings.refreshMs,
+      sessionNames,
     })
     try {
       for (const route of Object.values(ROUTES)) {
@@ -142,6 +145,17 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
     } catch (error) {
       warn('web route registration failed:', describeError(error))
       void recordActivation({ route: 'failed', error: describeError(error) })
+    }
+  })
+
+  ctx.inject(['workspaceRegistry', 'sessionQuery'], (scope) => {
+    try {
+      sessionNames.setSources({
+        workspaceRegistry: scope.get('workspaceRegistry') as { list(): WorkspaceLike[] } | undefined,
+        sessionQuery: scope.get('sessionQuery') as SessionQueryLike | undefined,
+      })
+    } catch (error) {
+      warn('workspace/session-name services unavailable:', describeError(error))
     }
   })
 

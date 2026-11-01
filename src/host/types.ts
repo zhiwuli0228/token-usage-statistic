@@ -164,6 +164,8 @@ export interface DailyPayload {
 /** One session row in the selected range. */
 export interface SessionUsageView extends Totals {
   sessionId: string
+  name: string | null
+  workspace: string | null
   firstAt: number
   lastAt: number
   cost: CostRender

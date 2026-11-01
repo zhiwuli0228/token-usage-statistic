@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 
 import type { AccountsPayload, BudgetState } from './accounts/types.js'
 import { dailyCsv, jsonExport, sessionsCsv } from './export.js'
+import type { SessionNameResolver } from './sessionNames.js'
 import type { UsageStore } from './store.js'
 import type { BackfillStatus } from './types.js'
 
@@ -109,13 +110,14 @@ export interface ApiDependencies {
   budgets: (now: number) => BudgetState
   refreshAccounts: () => void
   refreshMs: number
+  sessionNames: SessionNameResolver
   now?: () => number
 }
 
 /** Build the route handler. */
 export function createHttpHandler(dependencies: ApiDependencies): (request: IncomingMessage, response: ServerResponse) => void {
   const now = dependencies.now ?? Date.now
-  return function handle(request, response): void {
+  return async function handle(request, response): Promise<void> {
     const method = typeof request.method === 'string' ? request.method : 'GET'
     let url: URL
     try {
@@ -137,6 +139,7 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
     try {
       switch (url.pathname) {
         case ROUTES.summary: {
+          await dependencies.sessionNames.refresh(dependencies.store.sessionIds())
           const snapshot = dependencies.store.snapshot({
             days: parseDays(url.searchParams.get('days')),
             sessionLimit: parseLimit(url.searchParams.get('sessions'), 12, 100),
@@ -145,6 +148,7 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
             backfill: dependencies.backfill(),
             budgets: dependencies.budgets(now()),
             refreshMs: dependencies.refreshMs,
+            sessionNames: dependencies.sessionNames,
           })
           sendJson(response, 200, snapshot, method)
           return
@@ -155,10 +159,12 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
           return
         }
         case ROUTES.daily: {
+          await dependencies.sessionNames.refresh(dependencies.store.sessionIds())
           const snapshot = dependencies.store.dailyDetails({
             days: parseDays(url.searchParams.get('days')),
             sessionLimit: parseLimit(url.searchParams.get('sessions'), 12, 100),
             now: now(),
+            sessionNames: dependencies.sessionNames,
           })
           sendJson(response, 200, snapshot, method)
           return

@@ -44,7 +44,7 @@ describe('usage fold', () => {
     expect(snapshot.byProvider[0]).toMatchObject({ provider: 'deepseek', calls: 1, tokens: 1650 })
     expect(snapshot.byProvider[0]?.models[0]).toMatchObject({ model: 'deepseek-v4-flash', tokens: 1650 })
     expect(snapshot.byDay[0]).toMatchObject({ calls: 1, tokens: 1650 })
-    expect(snapshot.sessions[0]).toMatchObject({ sessionId: 'session-test', calls: 1 })
+    expect(snapshot.sessions[0]).toMatchObject({ sessionId: 'session-test', calls: 1, name: null, workspace: null })
     expect(snapshot.counts.samples).toBe(1)
   })
 
@@ -149,6 +149,25 @@ describe('usage fold', () => {
     expect(details.days[0].sessions).toHaveLength(2)
     expect(details.days[0].models).toHaveLength(2)
     expect(details.days[0].sessions[0].sessionId).toBe('s1')
+  })
+
+  it('uses friendly session names when provided', () => {
+    const store = new UsageStore({ pricer: fakePricer() })
+    const time = Date.now()
+    store.apply(makeSample({ time, sessionId: 's-named', seq: 1, sampleKey: '1:1' }))
+    const names = new Map([
+      ['s-named', { name: 'Named Session', workspace: 'My Workspace' }],
+    ])
+    const snapshot = store.snapshot({
+      days: 1,
+      now: time,
+      sessionNames: { get: (id: string) => names.get(id) ?? {}, refresh: async () => {} },
+    })
+    expect(snapshot.sessions[0]).toMatchObject({
+      sessionId: 's-named',
+      name: 'Named Session',
+      workspace: 'My Workspace',
+    })
   })
 
   it('produces a JSON-safe snapshot detached from the fold', () => {

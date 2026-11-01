@@ -15,6 +15,7 @@
 import { applyCostSample, cloneCost, createCostAccumulator, mergeCost, renderCost, renderSampleCost } from './cost.js'
 import type { BudgetState } from './accounts/types.js'
 import type { Pricer } from './pricing.js'
+import type { SessionNameResolver } from './sessionNames.js'
 import type {
   BackfillStatus,
   Buckets,
@@ -129,6 +130,7 @@ export interface SnapshotOptions {
   backfill?: BackfillStatus
   budgets?: BudgetState
   refreshMs?: number
+  sessionNames?: SessionNameResolver
 }
 
 /** The plugin's usage fold. */
@@ -197,6 +199,11 @@ export class UsageStore {
   /** Highest accepted seq for one session (-1 when nothing was seen). */
   lastSeq(sessionId: string): number {
     return this.maxSeq.get(sessionId) ?? -1
+  }
+
+  /** Every session id currently known to the fold. */
+  sessionIds(): string[] {
+    return [...this.sessions.keys()]
   }
 
   /** How many lines were rejected and how many were replaced. */
@@ -392,7 +399,7 @@ export class UsageStore {
   }
 
   /** Per-day detail view for the chart and drill-down tables. */
-  dailyDetails(options: { days?: number | null; sessionLimit?: number; now?: number } = {}): DailyPayload {
+  dailyDetails(options: { days?: number | null; sessionLimit?: number; now?: number; sessionNames?: SessionNameResolver } = {}): DailyPayload {
     const now = options.now ?? Date.now()
     const requestedDays = options.days === undefined ? 30 : options.days
     const range = resolveRange(requestedDays, now)
@@ -418,8 +425,11 @@ export class UsageStore {
       const sessions: SessionUsageView[] = []
       for (const [sessionId, session] of entry.sessions) {
         const record = this.sessions.get(sessionId)
+        const names = options.sessionNames?.get(sessionId)
         sessions.push({
           sessionId,
+          name: names?.name ?? null,
+          workspace: names?.workspace ?? null,
           ...totalsOf(session.buckets, session.calls),
           firstAt: record?.firstAt ?? session.lastAt,
           lastAt: record?.lastAt ?? session.lastAt,
@@ -549,8 +559,11 @@ export class UsageStore {
     const sessionViews: SessionUsageView[] = []
     for (const [sessionId, session] of sessions) {
       const record = this.sessions.get(sessionId)
+      const names = options.sessionNames?.get(sessionId)
       sessionViews.push({
         sessionId,
+        name: names?.name ?? null,
+        workspace: names?.workspace ?? null,
         calls: session.calls,
         input: session.buckets.input,
         output: session.buckets.output,

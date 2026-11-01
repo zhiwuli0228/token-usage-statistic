@@ -565,13 +565,53 @@ function modelColumns(translate: Translate): Column<ModelUsageView>[] {
   ]
 }
 
+/** Render a session name with its workspace and id. */
+function SessionNameCell(props: { row: SessionUsageView }) {
+  const { row } = props
+  const hasName = row.name !== null && row.name.length > 0
+  const hasWorkspace = row.workspace !== null && row.workspace.length > 0
+  return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 } }, [
+    h(
+      'span',
+      {
+        key: 'primary',
+        style: { ...styles.cellStrong, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+        title: row.sessionId,
+      },
+      hasName ? row.name : shortSessionId(row.sessionId),
+    ),
+    hasWorkspace
+      ? h(
+          'span',
+          {
+            key: 'workspace',
+            style: { ...styles.cellMuted, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+            title: row.workspace ?? undefined,
+          },
+          row.workspace,
+        )
+      : null,
+    hasName
+      ? h(
+          'span',
+          {
+            key: 'id',
+            style: { ...styles.cellMuted, fontSize: '11px' },
+            title: row.sessionId,
+          },
+          shortSessionId(row.sessionId),
+        )
+      : null,
+  ])
+}
+
 /** Session table columns, shared by the usage list and day detail. */
 function sessionColumns(translate: Translate): Column<SessionUsageView>[] {
   return [
     {
       key: 'sessionId',
       label: translate('session'),
-      render: (row) => h('span', { title: row.sessionId }, shortSessionId(row.sessionId)),
+      render: (row) => h(SessionNameCell, { row }),
     },
     { key: 'calls', label: translate('calls'), align: 'right', render: (row) => numeric(row.calls) },
     { key: 'tokens', label: translate('tokens'), align: 'right', render: (row) => numeric(row.tokens) },

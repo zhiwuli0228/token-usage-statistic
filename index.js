@@ -204,7 +204,7 @@ var IDLE_BACKFILL = {
 };
 function createHttpHandler(dependencies) {
   const now = dependencies.now ?? Date.now;
-  return function handle(request, response) {
+  return async function handle(request, response) {
     const method = typeof request.method === "string" ? request.method : "GET";
     let url;
     try {
@@ -224,6 +224,7 @@ function createHttpHandler(dependencies) {
     try {
       switch (url.pathname) {
         case ROUTES.summary: {
+          await dependencies.sessionNames.refresh(dependencies.store.sessionIds());
           const snapshot = dependencies.store.snapshot({
             days: parseDays(url.searchParams.get("days")),
             sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
@@ -231,7 +232,8 @@ function createHttpHandler(dependencies) {
             now: now(),
             backfill: dependencies.backfill(),
             budgets: dependencies.budgets(now()),
-            refreshMs: dependencies.refreshMs
+            refreshMs: dependencies.refreshMs,
+            sessionNames: dependencies.sessionNames
           });
           sendJson(response, 200, snapshot, method);
           return;
@@ -242,10 +244,12 @@ function createHttpHandler(dependencies) {
           return;
         }
         case ROUTES.daily: {
+          await dependencies.sessionNames.refresh(dependencies.store.sessionIds());
           const snapshot = dependencies.store.dailyDetails({
             days: parseDays(url.searchParams.get("days")),
             sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
-            now: now()
+            now: now(),
+            sessionNames: dependencies.sessionNames
           });
           sendJson(response, 200, snapshot, method);
           return;
@@ -1646,6 +1650,68 @@ var LedgerWriter = class {
   }
 };
 
+// src/host/sessionNames.ts
+var SessionNameService = class {
+  workspaceRegistry;
+  sessionQuery;
+  log;
+  workspaceBySession = /* @__PURE__ */ new Map();
+  nameBySession = /* @__PURE__ */ new Map();
+  constructor(config = {}) {
+    this.workspaceRegistry = config.workspaceRegistry;
+    this.sessionQuery = config.sessionQuery;
+    this.log = config.log ?? (() => {
+    });
+  }
+  /** Late-binding helper: services may become available after activation. */
+  setSources(config) {
+    this.workspaceRegistry = config.workspaceRegistry;
+    this.sessionQuery = config.sessionQuery;
+  }
+  /** Refresh workspace and title information for a set of session ids. */
+  async refresh(sessionIds) {
+    this.refreshWorkspaces();
+    if (sessionIds.length === 0) return;
+    await this.refreshTitles(sessionIds);
+  }
+  refreshWorkspaces() {
+    if (this.workspaceRegistry === void 0) return;
+    try {
+      for (const workspace of this.workspaceRegistry.list()) {
+        for (const sessionId of workspace.sessionIds) {
+          this.workspaceBySession.set(sessionId, workspace.title);
+        }
+      }
+    } catch (error) {
+      this.log(`workspace list failed: ${describeError(error)}`);
+    }
+  }
+  async refreshTitles(sessionIds) {
+    if (this.sessionQuery === void 0) return;
+    try {
+      const results = await this.sessionQuery.readTitleSnapshots(sessionIds);
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        const title = result.value?.title?.title;
+        if (typeof title === "string" && title.length > 0) {
+          this.nameBySession.set(result.sessionId, title);
+        }
+      }
+    } catch (error) {
+      this.log(`session title query failed: ${describeError(error)}`);
+    }
+  }
+  get(sessionId) {
+    return {
+      name: this.nameBySession.get(sessionId),
+      workspace: this.workspaceBySession.get(sessionId)
+    };
+  }
+};
+function describeError(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // src/host/store.ts
 function modelKeyOf(provider, model) {
   return `${provider}/${model}`;
@@ -1741,6 +1807,10 @@ var UsageStore = class {
   /** Highest accepted seq for one session (-1 when nothing was seen). */
   lastSeq(sessionId) {
     return this.maxSeq.get(sessionId) ?? -1;
+  }
+  /** Every session id currently known to the fold. */
+  sessionIds() {
+    return [...this.sessions.keys()];
   }
   /** How many lines were rejected and how many were replaced. */
   diagnostics() {
@@ -1907,8 +1977,11 @@ var UsageStore = class {
       const sessions = [];
       for (const [sessionId, session] of entry.sessions) {
         const record = this.sessions.get(sessionId);
+        const names = options.sessionNames?.get(sessionId);
         sessions.push({
           sessionId,
+          name: names?.name ?? null,
+          workspace: names?.workspace ?? null,
           ...totalsOf(session.buckets, session.calls),
           firstAt: record?.firstAt ?? session.lastAt,
           lastAt: record?.lastAt ?? session.lastAt,
@@ -2024,8 +2097,11 @@ var UsageStore = class {
     const sessionViews = [];
     for (const [sessionId, session] of sessions) {
       const record = this.sessions.get(sessionId);
+      const names = options.sessionNames?.get(sessionId);
       sessionViews.push({
         sessionId,
+        name: names?.name ?? null,
+        workspace: names?.workspace ?? null,
         calls: session.calls,
         input: session.buckets.input,
         output: session.buckets.output,
@@ -2102,7 +2178,7 @@ function warn(...values) {
   } catch {
   }
 }
-function describeError(error) {
+function describeError2(error) {
   return error instanceof Error ? error.message : String(error);
 }
 function createActivationRecorder(dataFile) {
@@ -2113,7 +2189,7 @@ function createActivationRecorder(dataFile) {
       await writeFile2(file, `${JSON.stringify({ at: Date.now(), dataFile, ...patch }, null, 2)}
 `, "utf8");
     } catch (error) {
-      warn("activation receipt could not be written:", describeError(error));
+      warn("activation receipt could not be written:", describeError2(error));
     }
   };
 }
@@ -2130,8 +2206,9 @@ async function apply(ctx, config) {
     (message) => warn(message)
   );
   const store = new UsageStore({ pricer, recentLimit: settings.recentLimit });
-  const ledger = new LedgerWriter(dataFile, { onError: (error) => warn("ledger append failed:", describeError(error)) });
+  const ledger = new LedgerWriter(dataFile, { onError: (error) => warn("ledger append failed:", describeError2(error)) });
   const collector = new Collector();
+  const sessionNames = new SessionNameService({ log: (message) => warn(message) });
   let backfill;
   let registry;
   try {
@@ -2141,7 +2218,7 @@ async function apply(ctx, config) {
     if (loaded.skipped > 0) warn(`ignored ${loaded.skipped} unreadable ledger line(s) in ${dataFile}`);
     if (diagnostics.skipped > 0) warn(`ignored ${diagnostics.skipped} invalid ledger record(s)`);
   } catch (error) {
-    warn("ledger could not be read, starting from an empty fold:", describeError(error));
+    warn("ledger could not be read, starting from an empty fold:", describeError2(error));
   }
   const ingest = (session, event) => {
     const collected = collector.observe(session, event);
@@ -2168,7 +2245,8 @@ async function apply(ctx, config) {
       refreshAccounts: () => {
         void registry?.refresh();
       },
-      refreshMs: settings.refreshMs
+      refreshMs: settings.refreshMs,
+      sessionNames
     });
     try {
       for (const route of Object.values(ROUTES)) {
@@ -2182,8 +2260,18 @@ async function apply(ctx, config) {
       }
       void recordActivation({ route: "registered", origin, paths: Object.values(ROUTES) });
     } catch (error) {
-      warn("web route registration failed:", describeError(error));
-      void recordActivation({ route: "failed", error: describeError(error) });
+      warn("web route registration failed:", describeError2(error));
+      void recordActivation({ route: "failed", error: describeError2(error) });
+    }
+  });
+  ctx.inject(["workspaceRegistry", "sessionQuery"], (scope) => {
+    try {
+      sessionNames.setSources({
+        workspaceRegistry: scope.get("workspaceRegistry"),
+        sessionQuery: scope.get("sessionQuery")
+      });
+    } catch (error) {
+      warn("workspace/session-name services unavailable:", describeError2(error));
     }
   });
   ctx.inject(["settings", "credentials"], (scope) => {
