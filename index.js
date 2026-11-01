@@ -224,7 +224,7 @@ function createHttpHandler(dependencies) {
     try {
       switch (url.pathname) {
         case ROUTES.summary: {
-          await dependencies.sessionNames.refresh(dependencies.store.sessionIds());
+          void dependencies.sessionNames.refresh(dependencies.store.sessionIds());
           const snapshot = dependencies.store.snapshot({
             days: parseDays(url.searchParams.get("days")),
             sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
@@ -244,7 +244,7 @@ function createHttpHandler(dependencies) {
           return;
         }
         case ROUTES.daily: {
-          await dependencies.sessionNames.refresh(dependencies.store.sessionIds());
+          void dependencies.sessionNames.refresh(dependencies.store.sessionIds());
           const snapshot = dependencies.store.dailyDetails({
             days: parseDays(url.searchParams.get("days")),
             sessionLimit: parseLimit(url.searchParams.get("sessions"), 12, 100),
@@ -1651,12 +1651,15 @@ var LedgerWriter = class {
 };
 
 // src/host/sessionNames.ts
-var SessionNameService = class {
+var SessionNameService = class _SessionNameService {
+  static TTL_MS = 3e4;
   workspaceRegistry;
   sessionQuery;
   log;
   workspaceBySession = /* @__PURE__ */ new Map();
   nameBySession = /* @__PURE__ */ new Map();
+  lastRefreshAt = 0;
+  refreshing = null;
   constructor(config = {}) {
     this.workspaceRegistry = config.workspaceRegistry;
     this.sessionQuery = config.sessionQuery;
@@ -1672,16 +1675,22 @@ var SessionNameService = class {
   async refresh(sessionIds) {
     this.refreshWorkspaces();
     if (sessionIds.length === 0) return;
-    await this.refreshTitles(sessionIds);
+    if (Date.now() - this.lastRefreshAt < _SessionNameService.TTL_MS) return;
+    if (this.refreshing !== null) return this.refreshing;
+    this.refreshing = this.refreshTitles(sessionIds).finally(() => {
+      this.lastRefreshAt = Date.now();
+      this.refreshing = null;
+    });
+    return this.refreshing;
   }
   refreshWorkspaces() {
     if (this.workspaceRegistry === void 0) return;
     try {
+      const next = /* @__PURE__ */ new Map();
       for (const workspace of this.workspaceRegistry.list()) {
-        for (const sessionId of workspace.sessionIds) {
-          this.workspaceBySession.set(sessionId, workspace.title);
-        }
+        for (const sessionId of workspace.sessionIds) next.set(sessionId, workspace.title);
       }
+      this.workspaceBySession = next;
     } catch (error) {
       this.log(`workspace list failed: ${describeError(error)}`);
     }
@@ -2270,6 +2279,7 @@ async function apply(ctx, config) {
         workspaceRegistry: scope.get("workspaceRegistry"),
         sessionQuery: scope.get("sessionQuery")
       });
+      void sessionNames.refresh(store.sessionIds());
     } catch (error) {
       warn("workspace/session-name services unavailable:", describeError2(error));
     }

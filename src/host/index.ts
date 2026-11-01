@@ -154,6 +154,7 @@ export async function apply(ctx: HostContext, config?: unknown): Promise<void> {
         workspaceRegistry: scope.get('workspaceRegistry') as { list(): WorkspaceLike[] } | undefined,
         sessionQuery: scope.get('sessionQuery') as SessionQueryLike | undefined,
       })
+      void sessionNames.refresh(store.sessionIds())
     } catch (error) {
       warn('workspace/session-name services unavailable:', describeError(error))
     }

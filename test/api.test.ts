@@ -147,6 +147,21 @@ describe('summary route', () => {
     )
   })
 
+  it('does not wait for a slow session-name refresh', async () => {
+    const handler = createHttpHandler({
+      store: storeStub(),
+      backfill: () => IDLE_BACKFILL,
+      accounts: () => ({ schemaVersion: 1, generatedAt: 1, refreshMs: 600000, refreshing: false, accounts: [] }),
+      budgets: () => budgets,
+      sessionNames: { refresh: () => new Promise<void>(() => {}), get: () => ({}) },
+      refreshAccounts: () => {},
+      refreshMs: 20000,
+      now: () => 1234,
+    })
+    const response = await call(handler, 'GET', `${ROUTES.summary}?days=7`)
+    expect(response.status).toBe(200)
+  })
+
   it('rejects unknown paths and methods', async () => {
     const handler = handlerWith()
     expect((await call(handler, 'GET', `${ROUTES.summary}/nope`)).status).toBe(404)

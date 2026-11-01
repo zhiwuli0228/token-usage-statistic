@@ -139,7 +139,7 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
     try {
       switch (url.pathname) {
         case ROUTES.summary: {
-          await dependencies.sessionNames.refresh(dependencies.store.sessionIds())
+          void dependencies.sessionNames.refresh(dependencies.store.sessionIds())
           const snapshot = dependencies.store.snapshot({
             days: parseDays(url.searchParams.get('days')),
             sessionLimit: parseLimit(url.searchParams.get('sessions'), 12, 100),
@@ -159,7 +159,7 @@ export function createHttpHandler(dependencies: ApiDependencies): (request: Inco
           return
         }
         case ROUTES.daily: {
-          await dependencies.sessionNames.refresh(dependencies.store.sessionIds())
+          void dependencies.sessionNames.refresh(dependencies.store.sessionIds())
           const snapshot = dependencies.store.dailyDetails({
             days: parseDays(url.searchParams.get('days')),
             sessionLimit: parseLimit(url.searchParams.get('sessions'), 12, 100),

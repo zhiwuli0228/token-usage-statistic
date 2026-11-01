@@ -17,7 +17,7 @@ const React = {
     return { type, props: props ?? {}, children }
   },
   useState(initial) {
-    return [initial, () => {}]
+    return [typeof initial === 'function' ? initial() : initial, () => {}]
   },
   useRef(initial) {
     return { current: initial }

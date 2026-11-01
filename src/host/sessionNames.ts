@@ -39,11 +39,14 @@ export interface SessionNameServiceConfig {
 
 /** Mutable cache of human-readable session metadata. */
 export class SessionNameService implements SessionNameResolver {
+  private static readonly TTL_MS = 30_000
   private workspaceRegistry?: SessionNameServiceConfig['workspaceRegistry']
   private sessionQuery?: SessionQueryLike
   private readonly log: (message: string) => void
-  private readonly workspaceBySession = new Map<string, string>()
+  private workspaceBySession = new Map<string, string>()
   private readonly nameBySession = new Map<string, string>()
+  private lastRefreshAt = 0
+  private refreshing: Promise<void> | null = null
 
   constructor(config: SessionNameServiceConfig = {}) {
     this.workspaceRegistry = config.workspaceRegistry
@@ -61,17 +64,23 @@ export class SessionNameService implements SessionNameResolver {
   async refresh(sessionIds: string[]): Promise<void> {
     this.refreshWorkspaces()
     if (sessionIds.length === 0) return
-    await this.refreshTitles(sessionIds)
+    if (Date.now() - this.lastRefreshAt < SessionNameService.TTL_MS) return
+    if (this.refreshing !== null) return this.refreshing
+    this.refreshing = this.refreshTitles(sessionIds).finally(() => {
+      this.lastRefreshAt = Date.now()
+      this.refreshing = null
+    })
+    return this.refreshing
   }
 
   private refreshWorkspaces(): void {
     if (this.workspaceRegistry === undefined) return
     try {
+      const next = new Map<string, string>()
       for (const workspace of this.workspaceRegistry.list()) {
-        for (const sessionId of workspace.sessionIds) {
-          this.workspaceBySession.set(sessionId, workspace.title)
-        }
+        for (const sessionId of workspace.sessionIds) next.set(sessionId, workspace.title)
       }
+      this.workspaceBySession = next
     } catch (error) {
       this.log(`workspace list failed: ${describeError(error)}`)
     }

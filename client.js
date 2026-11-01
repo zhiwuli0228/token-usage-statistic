@@ -1,5 +1,54 @@
 "use strict";
 (() => {
+  // src/client/cache.ts
+  var PREFIX = "token-usage-statistic:cache:v3:";
+  var TTL_MS = 30 * 60 * 1e3;
+  var SUMMARY_URL = "/token-usage-statistic/api/summary";
+  var DAILY_URL = "/token-usage-statistic/api/daily";
+  function storage() {
+    try {
+      return typeof localStorage === "undefined" ? null : localStorage;
+    } catch {
+      return null;
+    }
+  }
+  function readCache(key) {
+    const target = storage();
+    if (target === null) return null;
+    try {
+      const raw = target.getItem(PREFIX + key);
+      if (raw === null) return null;
+      const entry = JSON.parse(raw);
+      if (typeof entry.at !== "number" || Date.now() - entry.at > TTL_MS) return null;
+      return entry.data;
+    } catch {
+      return null;
+    }
+  }
+  function writeCache(key, data) {
+    const target = storage();
+    if (target === null) return;
+    try {
+      target.setItem(PREFIX + key, JSON.stringify({ at: Date.now(), data }));
+    } catch {
+    }
+  }
+  function prefetchToday() {
+    if (typeof fetch !== "function") return;
+    if (readCache("summary:1") !== null && readCache("daily:1") !== null) return;
+    void (async () => {
+      try {
+        const [summary, daily] = await Promise.all([
+          fetch(`${SUMMARY_URL}?days=1&recent=20`, { cache: "no-store" }),
+          fetch(`${DAILY_URL}?days=1`, { cache: "no-store" })
+        ]);
+        if (summary.ok) writeCache("summary:1", await summary.json());
+        if (daily.ok) writeCache("daily:1", await daily.json());
+      } catch {
+      }
+    })();
+  }
+
   // src/client/i18n.ts
   var NS = "token-usage-statistic";
   var EN = {
@@ -313,8 +362,6 @@
   }
 
   // src/client/panel.ts
-  var SUMMARY_URL = "/token-usage-statistic/api/summary";
-  var DAILY_URL = "/token-usage-statistic/api/daily";
   var DEFAULT_REFRESH_MS = 15e3;
   var RANGES = ["1", "7", "30", "all"];
   function stageDays(range) {
@@ -329,6 +376,33 @@
   }
   function isAbort(cause) {
     return cause !== null && typeof cause === "object" && cause.name === "AbortError";
+  }
+  function isUsageSnapshot(value) {
+    if (value === null || typeof value !== "object") return false;
+    const candidate = value;
+    const totals = candidate.totals;
+    return totals !== void 0 && typeof totals === "object" && totals !== null && typeof totals.cost === "object" && totals.cost !== null && Array.isArray(candidate.byProvider) && Array.isArray(candidate.byDay) && Array.isArray(candidate.sessions);
+  }
+  function isDailyPayload(value) {
+    return value !== null && typeof value === "object" && Array.isArray(value.days);
+  }
+  function cachedSummary(range) {
+    const exact = readCache(`summary:${range}`);
+    if (isUsageSnapshot(exact)) return { data: exact, phase: "full" };
+    if (range !== "1") {
+      const today = readCache("summary:1");
+      if (isUsageSnapshot(today)) return { data: today, phase: "today" };
+    }
+    return null;
+  }
+  function cachedDaily(range) {
+    const exact = readCache(`daily:${range}`);
+    if (isDailyPayload(exact)) return { data: exact, phase: "full" };
+    if (range !== "1") {
+      const today = readCache("daily:1");
+      if (isDailyPayload(today)) return { data: today, phase: "today" };
+    }
+    return null;
   }
   var styles = {
     page: {
@@ -723,10 +797,10 @@
     );
   }
   function useSummary(range) {
-    const [data, setData] = useState(null);
+    const [data, setData] = useState(() => cachedSummary(range)?.data ?? null);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [phase, setPhase] = useState("today");
+    const [phase, setPhase] = useState(() => cachedSummary(range)?.phase ?? "today");
     const [nonce, setNonce] = useState(0);
     const loadedRange = useRef(null);
     const configured = data?.config?.refreshMs;
@@ -734,9 +808,22 @@
     useEffect(() => {
       let cancelled = false;
       const controller = new AbortController();
-      const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range);
+      const isPoll = loadedRange.current === range;
       loadedRange.current = range;
-      const finalStage = stages[stages.length - 1] ?? null;
+      const finalStage = stageDays(range).at(-1) ?? null;
+      let stages;
+      if (isPoll) {
+        stages = [finalStage];
+      } else {
+        const cached = cachedSummary(range);
+        if (cached !== null) {
+          setData(cached.data);
+          setPhase(cached.phase);
+          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage !== 1);
+        } else {
+          stages = stageDays(range);
+        }
+      }
       const load = async () => {
         setLoading(true);
         for (const stage of stages) {
@@ -751,6 +838,8 @@
             setData(payload);
             setError(null);
             setPhase(phaseOf(stage, finalStage));
+            writeCache(`summary:${stage === null ? "all" : stage}`, payload);
+            if (stage === finalStage) writeCache(`summary:${range}`, payload);
           } catch (cause) {
             if (cancelled || isAbort(cause)) return;
             setError(cause instanceof Error ? cause.message : String(cause));
@@ -783,18 +872,31 @@
     return translate("rangeAll");
   }
   function useDaily(range) {
-    const [data, setData] = useState(null);
+    const [data, setData] = useState(() => cachedDaily(range)?.data ?? null);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [phase, setPhase] = useState("today");
+    const [phase, setPhase] = useState(() => cachedDaily(range)?.phase ?? "today");
     const [nonce, setNonce] = useState(0);
     const loadedRange = useRef(null);
     useEffect(() => {
       let cancelled = false;
       const controller = new AbortController();
-      const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range);
+      const isPoll = loadedRange.current === range;
       loadedRange.current = range;
-      const finalStage = stages[stages.length - 1] ?? null;
+      const finalStage = stageDays(range).at(-1) ?? null;
+      let stages;
+      if (isPoll) {
+        stages = [finalStage];
+      } else {
+        const cached = cachedDaily(range);
+        if (cached !== null) {
+          setData(cached.data);
+          setPhase(cached.phase);
+          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage !== 1);
+        } else {
+          stages = stageDays(range);
+        }
+      }
       const load = async () => {
         setLoading(true);
         for (const stage of stages) {
@@ -809,6 +911,8 @@
             setData(payload);
             setError(null);
             setPhase(phaseOf(stage, finalStage));
+            writeCache(`daily:${stage === null ? "all" : stage}`, payload);
+            if (stage === finalStage) writeCache(`daily:${range}`, payload);
           } catch (cause) {
             if (cancelled || isAbort(cause)) return;
             setError(cause instanceof Error ? cause.message : String(cause));
@@ -1503,6 +1607,7 @@
           }
         });
         ctx.effect(() => () => installation.dispose());
+        prefetchToday();
         ctx.slots.inject(
           "sidebar.panellist",
           () => ctx.slots.register(

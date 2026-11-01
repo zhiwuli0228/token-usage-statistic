@@ -8,7 +8,7 @@ const fakeReact = {
     return { type, props: (props ?? {}) as Record<string, unknown>, children }
   },
   useState(initial: unknown) {
-    return [initial, () => {}]
+    return [typeof initial === 'function' ? (initial as () => unknown)() : initial, () => {}]
   },
   useRef(initial: unknown) {
     return { current: initial }

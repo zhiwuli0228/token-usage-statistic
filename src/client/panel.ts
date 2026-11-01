@@ -18,12 +18,11 @@ import type {
   SessionUsageView,
   UsageSnapshot,
 } from '../host/types.js'
+import { DAILY_URL, SUMMARY_URL, readCache, writeCache } from './cache.js'
 import { formatClock, formatCompact, formatCost, formatDateTime, formatInteger, formatMoney, formatPercent, shortSessionId } from './format.js'
 import type { LocaleLike, Translate } from './i18n.js'
 import { h, useCallback, useEffect, useRef, useState, useSyncExternalStore } from './react.js'
 
-const SUMMARY_URL = '/token-usage-statistic/api/summary'
-const DAILY_URL = '/token-usage-statistic/api/daily'
 const DEFAULT_REFRESH_MS = 15000
 
 /** Selectable trailing window; `all` means everything. */
@@ -53,6 +52,47 @@ function phaseOf(stage: number | null, final: number | null): LoadPhase {
 
 function isAbort(cause: unknown): boolean {
   return cause !== null && typeof cause === 'object' && (cause as { name?: string }).name === 'AbortError'
+}
+
+function isUsageSnapshot(value: unknown): value is UsageSnapshot {
+  if (value === null || typeof value !== 'object') return false
+  const candidate = value as Partial<UsageSnapshot>
+  const totals = candidate.totals as { cost?: unknown } | undefined
+  return (
+    totals !== undefined &&
+    typeof totals === 'object' &&
+    totals !== null &&
+    typeof totals.cost === 'object' &&
+    totals.cost !== null &&
+    Array.isArray(candidate.byProvider) &&
+    Array.isArray(candidate.byDay) &&
+    Array.isArray(candidate.sessions)
+  )
+}
+
+function isDailyPayload(value: unknown): value is DailyPayload {
+  return value !== null && typeof value === 'object' && Array.isArray((value as Partial<DailyPayload>).days)
+}
+
+/** Best cached snapshot for a range: exact range first, then today. */
+function cachedSummary(range: SummaryRange): { data: UsageSnapshot; phase: LoadPhase } | null {
+  const exact = readCache<unknown>(`summary:${range}`)
+  if (isUsageSnapshot(exact)) return { data: exact, phase: 'full' }
+  if (range !== '1') {
+    const today = readCache<unknown>('summary:1')
+    if (isUsageSnapshot(today)) return { data: today, phase: 'today' }
+  }
+  return null
+}
+
+function cachedDaily(range: SummaryRange): { data: DailyPayload; phase: LoadPhase } | null {
+  const exact = readCache<unknown>(`daily:${range}`)
+  if (isDailyPayload(exact)) return { data: exact, phase: 'full' }
+  if (range !== '1') {
+    const today = readCache<unknown>('daily:1')
+    if (isDailyPayload(today)) return { data: today, phase: 'today' }
+  }
+  return null
 }
 
 const styles: Record<string, Record<string, string | number>> = {
@@ -475,10 +515,10 @@ interface SummaryState {
 
 /** Read the Host snapshot with polling and a manual refresh. */
 function useSummary(range: SummaryRange): SummaryState {
-  const [data, setData] = useState<UsageSnapshot | null>(null)
+  const [data, setData] = useState<UsageSnapshot | null>(() => cachedSummary(range)?.data ?? null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [phase, setPhase] = useState<LoadPhase>('today')
+  const [phase, setPhase] = useState<LoadPhase>(() => cachedSummary(range)?.phase ?? 'today')
   const [nonce, setNonce] = useState(0)
   const loadedRange = useRef<SummaryRange | null>(null)
 
@@ -488,9 +528,22 @@ function useSummary(range: SummaryRange): SummaryState {
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range)
+    const isPoll = loadedRange.current === range
     loadedRange.current = range
-    const finalStage = stages[stages.length - 1] ?? null
+    const finalStage = stageDays(range).at(-1) ?? null
+    let stages: Array<number | null>
+    if (isPoll) {
+      stages = [finalStage]
+    } else {
+      const cached = cachedSummary(range)
+      if (cached !== null) {
+        setData(cached.data)
+        setPhase(cached.phase)
+        stages = cached.phase === 'full' ? [finalStage] : stageDays(range).filter((stage) => stage !== 1)
+      } else {
+        stages = stageDays(range)
+      }
+    }
 
     const load = async (): Promise<void> => {
       setLoading(true)
@@ -506,6 +559,8 @@ function useSummary(range: SummaryRange): SummaryState {
           setData(payload)
           setError(null)
           setPhase(phaseOf(stage, finalStage))
+          writeCache(`summary:${stage === null ? 'all' : stage}`, payload)
+          if (stage === finalStage) writeCache(`summary:${range}`, payload)
         } catch (cause) {
           if (cancelled || isAbort(cause)) return
           setError(cause instanceof Error ? cause.message : String(cause))
@@ -551,19 +606,32 @@ interface DailyState {
 
 /** Read the daily drill-down snapshot with polling. */
 function useDaily(range: SummaryRange): DailyState {
-  const [data, setData] = useState<DailyPayload | null>(null)
+  const [data, setData] = useState<DailyPayload | null>(() => cachedDaily(range)?.data ?? null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [phase, setPhase] = useState<LoadPhase>('today')
+  const [phase, setPhase] = useState<LoadPhase>(() => cachedDaily(range)?.phase ?? 'today')
   const [nonce, setNonce] = useState(0)
   const loadedRange = useRef<SummaryRange | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range)
+    const isPoll = loadedRange.current === range
     loadedRange.current = range
-    const finalStage = stages[stages.length - 1] ?? null
+    const finalStage = stageDays(range).at(-1) ?? null
+    let stages: Array<number | null>
+    if (isPoll) {
+      stages = [finalStage]
+    } else {
+      const cached = cachedDaily(range)
+      if (cached !== null) {
+        setData(cached.data)
+        setPhase(cached.phase)
+        stages = cached.phase === 'full' ? [finalStage] : stageDays(range).filter((stage) => stage !== 1)
+      } else {
+        stages = stageDays(range)
+      }
+    }
 
     const load = async (): Promise<void> => {
       setLoading(true)
@@ -579,6 +647,8 @@ function useDaily(range: SummaryRange): DailyState {
           setData(payload)
           setError(null)
           setPhase(phaseOf(stage, finalStage))
+          writeCache(`daily:${stage === null ? 'all' : stage}`, payload)
+          if (stage === finalStage) writeCache(`daily:${range}`, payload)
         } catch (cause) {
           if (cancelled || isAbort(cause)) return
           setError(cause instanceof Error ? cause.message : String(cause))

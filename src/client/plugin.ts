@@ -5,6 +5,7 @@
  * row and `main` renders the page the layout dispatches for that id.
  */
 
+import { prefetchToday } from './cache.js'
 import type { LocaleLike } from './i18n.js'
 import { installLocale } from './i18n.js'
 import { Panel } from './panel.js'
@@ -81,6 +82,7 @@ export function createClientModule(): ClientModule {
         }
       })
       ctx.effect(() => () => installation.dispose())
+      prefetchToday()
 
       ctx.slots.inject('sidebar.panellist', () =>
         ctx.slots.register(
