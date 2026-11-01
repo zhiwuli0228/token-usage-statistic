@@ -83,6 +83,7 @@
     chartMetricCost: "Cost",
     chartHint: "Click a bar to view the details for that day.",
     chartCurrent: "Metric",
+    progressiveLoading: "Showing today; loading the rest of the range\u2026",
     chartEmpty: "No daily usage to chart yet.",
     dayDetailTitle: "Details for {{day}}",
     dayDetailSessions: "Sessions",
@@ -169,6 +170,7 @@
     chartMetricCost: "\u9884\u4F30\u8D39\u7528",
     chartHint: "\u70B9\u51FB\u67F1\u72B6\u56FE\u67E5\u770B\u5F53\u5929\u7684\u8BE6\u60C5\u3002",
     chartCurrent: "\u5F53\u524D\u6307\u6807",
+    progressiveLoading: "\u5DF2\u5148\u663E\u793A\u4ECA\u65E5\uFF0C\u6B63\u5728\u56DE\u5237\u5176\u4F59\u533A\u95F4\u2026",
     chartEmpty: "\u5C1A\u65E0\u6BCF\u65E5\u7528\u91CF\u6570\u636E\u3002",
     dayDetailTitle: "{{day}} \u8BE6\u60C5",
     dayDetailSessions: "\u4F1A\u8BDD",
@@ -294,6 +296,9 @@
   function useState(initial) {
     return getReact().useState(initial);
   }
+  function useRef(initial) {
+    return getReact().useRef(initial);
+  }
   function useEffect(effect, dependencies) {
     ;
     getReact().useEffect(effect, dependencies);
@@ -312,6 +317,19 @@
   var DAILY_URL = "/token-usage-statistic/api/daily";
   var DEFAULT_REFRESH_MS = 15e3;
   var RANGES = ["1", "7", "30", "all"];
+  function stageDays(range) {
+    if (range === "1") return [1];
+    if (range === "7") return [1, 7];
+    if (range === "30") return [1, 7, 30];
+    return [1, 7, 30, null];
+  }
+  function phaseOf(stage, final) {
+    if (stage === final) return "full";
+    return stage === 1 ? "today" : "partial";
+  }
+  function isAbort(cause) {
+    return cause !== null && typeof cause === "object" && cause.name === "AbortError";
+  }
   var styles = {
     page: {
       boxSizing: "border-box",
@@ -708,32 +726,40 @@
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [phase, setPhase] = useState("today");
     const [nonce, setNonce] = useState(0);
+    const loadedRange = useRef(null);
     const configured = data?.config?.refreshMs;
     const refreshMs = typeof configured === "number" && Number.isFinite(configured) ? Math.max(3e3, configured) : DEFAULT_REFRESH_MS;
     useEffect(() => {
       let cancelled = false;
       const controller = new AbortController();
+      const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range);
+      loadedRange.current = range;
+      const finalStage = stages[stages.length - 1] ?? null;
       const load = async () => {
-        try {
-          const response = await fetch(`${SUMMARY_URL}?days=${encodeURIComponent(range)}&recent=20`, {
-            cache: "no-store",
-            signal: controller.signal
-          });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const payload = await response.json();
-          if (cancelled) return;
-          setData(payload);
-          setError(null);
-        } catch (cause) {
-          if (cancelled) return;
-          if (cause !== null && typeof cause === "object" && cause.name === "AbortError") return;
-          setError(cause instanceof Error ? cause.message : String(cause));
-        } finally {
-          if (!cancelled) setLoading(false);
+        setLoading(true);
+        for (const stage of stages) {
+          try {
+            const response = await fetch(`${SUMMARY_URL}?days=${stage === null ? "all" : encodeURIComponent(String(stage))}&recent=20`, {
+              cache: "no-store",
+              signal: controller.signal
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (cancelled) return;
+            setData(payload);
+            setError(null);
+            setPhase(phaseOf(stage, finalStage));
+          } catch (cause) {
+            if (cancelled || isAbort(cause)) return;
+            setError(cause instanceof Error ? cause.message : String(cause));
+            loadedRange.current = null;
+            break;
+          }
         }
+        if (!cancelled) setLoading(false);
       };
-      setLoading(true);
       void load();
       return () => {
         cancelled = true;
@@ -748,7 +774,7 @@
       return () => clearInterval(timer);
     }, [refreshMs]);
     const refresh = useCallback(() => setNonce((value) => value + 1), []);
-    return { data, error, loading, refresh };
+    return { data, error, loading, phase, refresh };
   }
   function rangeLabel(range, translate) {
     if (range === "1") return translate("rangeToday");
@@ -760,30 +786,38 @@
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [phase, setPhase] = useState("today");
     const [nonce, setNonce] = useState(0);
+    const loadedRange = useRef(null);
     useEffect(() => {
       let cancelled = false;
       const controller = new AbortController();
+      const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range);
+      loadedRange.current = range;
+      const finalStage = stages[stages.length - 1] ?? null;
       const load = async () => {
-        try {
-          const response = await fetch(`${DAILY_URL}?days=${encodeURIComponent(range)}`, {
-            cache: "no-store",
-            signal: controller.signal
-          });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const payload = await response.json();
-          if (cancelled) return;
-          setData(payload);
-          setError(null);
-        } catch (cause) {
-          if (cancelled) return;
-          if (cause !== null && typeof cause === "object" && cause.name === "AbortError") return;
-          setError(cause instanceof Error ? cause.message : String(cause));
-        } finally {
-          if (!cancelled) setLoading(false);
+        setLoading(true);
+        for (const stage of stages) {
+          try {
+            const response = await fetch(`${DAILY_URL}?days=${stage === null ? "all" : encodeURIComponent(String(stage))}`, {
+              cache: "no-store",
+              signal: controller.signal
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (cancelled) return;
+            setData(payload);
+            setError(null);
+            setPhase(phaseOf(stage, finalStage));
+          } catch (cause) {
+            if (cancelled || isAbort(cause)) return;
+            setError(cause instanceof Error ? cause.message : String(cause));
+            loadedRange.current = null;
+            break;
+          }
         }
+        if (!cancelled) setLoading(false);
       };
-      setLoading(true);
       void load();
       return () => {
         cancelled = true;
@@ -798,7 +832,7 @@
       return () => clearInterval(timer);
     }, []);
     const refresh = useCallback(() => setNonce((value) => value + 1), []);
-    return { data, error, loading, refresh };
+    return { data, error, loading, phase, refresh };
   }
   function modelColumns(translate) {
     return [
@@ -901,8 +935,9 @@
     return formatCompact(value);
   }
   function DailyChart(props) {
-    const { days, metric, onMetricChange, selectedDay, onSelectDay, translate } = props;
+    const { days, metric, onMetricChange, selectedDay, onSelectDay, phase, translate } = props;
     if (days.length === 0) {
+      if (phase !== "full") return h("p", { style: styles.chartHint }, translate("loading"));
       return h("div", { style: styles.empty }, [h("p", { key: "title", style: styles.emptyTitle }, translate("chartEmpty"))]);
     }
     const max = Math.max(...days.map((day) => chartValueOf(day, metric)));
@@ -1192,8 +1227,8 @@
     const [range, setRange] = useState("30");
     const [chartMetric, setChartMetric] = useState("tokens");
     const [selectedDay, setSelectedDay] = useState(null);
-    const { data, error, loading, refresh } = useSummary(range);
-    const { data: dailyData, error: dailyError, loading: dailyLoading, refresh: refreshDaily } = useDaily(range);
+    const { data, error, loading, phase, refresh } = useSummary(range);
+    const { data: dailyData, error: dailyError, phase: dailyPhase } = useDaily(range);
     useEffect(() => {
       if (dailyData === null || dailyData.days.length === 0) return;
       setSelectedDay((current) => current === null ? dailyData.days[0].day : current);
@@ -1305,6 +1340,11 @@
           ])
         );
       }
+      if (data !== null && phase !== "full" && range !== "1") {
+        children.push(
+          h("div", { key: "progressive", style: styles.notice }, translate("progressiveLoading"))
+        );
+      }
       if (backfill !== void 0 && backfill.state === "running") {
         children.push(
           h(
@@ -1318,7 +1358,7 @@
       }
       if (data === null) {
         children.push(h("p", { key: "loading", style: styles.hint }, translate("loading")));
-      } else if (data.totals.calls === 0) {
+      } else if (data.totals.calls === 0 && phase === "full") {
         children.push(
           h("div", { key: "empty", style: styles.empty }, [
             h("p", { key: "title", style: styles.emptyTitle }, translate("empty")),
@@ -1371,6 +1411,7 @@
               onMetricChange: setChartMetric,
               selectedDay,
               onSelectDay: setSelectedDay,
+              phase: dailyPhase,
               translate
             })
           ])

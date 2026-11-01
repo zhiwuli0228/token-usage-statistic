@@ -10,6 +10,9 @@ const fakeReact = {
   useState(initial: unknown) {
     return [initial, () => {}]
   },
+  useRef(initial: unknown) {
+    return { current: initial }
+  },
   useEffect() {},
   useCallback(callback: unknown) {
     return callback

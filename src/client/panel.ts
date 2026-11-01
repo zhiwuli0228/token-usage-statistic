@@ -20,7 +20,7 @@ import type {
 } from '../host/types.js'
 import { formatClock, formatCompact, formatCost, formatDateTime, formatInteger, formatMoney, formatPercent, shortSessionId } from './format.js'
 import type { LocaleLike, Translate } from './i18n.js'
-import { h, useCallback, useEffect, useState, useSyncExternalStore } from './react.js'
+import { h, useCallback, useEffect, useRef, useState, useSyncExternalStore } from './react.js'
 
 const SUMMARY_URL = '/token-usage-statistic/api/summary'
 const DAILY_URL = '/token-usage-statistic/api/daily'
@@ -30,6 +30,30 @@ const DEFAULT_REFRESH_MS = 15000
 type SummaryRange = '1' | '7' | '30' | 'all'
 
 const RANGES: SummaryRange[] = ['1', '7', '30', 'all']
+
+/** How much of the selected range is currently backed by real data. */
+type LoadPhase = 'today' | 'partial' | 'full'
+
+/**
+ * Progressive stages: show today immediately, then widen the window. Each
+ * stage replaces the previous snapshot, so the panel never blocks on the
+ * slowest full-range query.
+ */
+function stageDays(range: SummaryRange): Array<number | null> {
+  if (range === '1') return [1]
+  if (range === '7') return [1, 7]
+  if (range === '30') return [1, 7, 30]
+  return [1, 7, 30, null]
+}
+
+function phaseOf(stage: number | null, final: number | null): LoadPhase {
+  if (stage === final) return 'full'
+  return stage === 1 ? 'today' : 'partial'
+}
+
+function isAbort(cause: unknown): boolean {
+  return cause !== null && typeof cause === 'object' && (cause as { name?: string }).name === 'AbortError'
+}
 
 const styles: Record<string, Record<string, string | number>> = {
   page: {
@@ -445,6 +469,7 @@ interface SummaryState {
   data: UsageSnapshot | null
   error: string | null
   loading: boolean
+  phase: LoadPhase
   refresh: () => void
 }
 
@@ -453,7 +478,9 @@ function useSummary(range: SummaryRange): SummaryState {
   const [data, setData] = useState<UsageSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [phase, setPhase] = useState<LoadPhase>('today')
   const [nonce, setNonce] = useState(0)
+  const loadedRange = useRef<SummaryRange | null>(null)
 
   const configured = data?.config?.refreshMs
   const refreshMs = typeof configured === 'number' && Number.isFinite(configured) ? Math.max(3000, configured) : DEFAULT_REFRESH_MS
@@ -461,26 +488,33 @@ function useSummary(range: SummaryRange): SummaryState {
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range)
+    loadedRange.current = range
+    const finalStage = stages[stages.length - 1] ?? null
+
     const load = async (): Promise<void> => {
-      try {
-        const response = await fetch(`${SUMMARY_URL}?days=${encodeURIComponent(range)}&recent=20`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const payload = (await response.json()) as UsageSnapshot
-        if (cancelled) return
-        setData(payload)
-        setError(null)
-      } catch (cause) {
-        if (cancelled) return
-        if (cause !== null && typeof cause === 'object' && (cause as { name?: string }).name === 'AbortError') return
-        setError(cause instanceof Error ? cause.message : String(cause))
-      } finally {
-        if (!cancelled) setLoading(false)
+      setLoading(true)
+      for (const stage of stages) {
+        try {
+          const response = await fetch(`${SUMMARY_URL}?days=${stage === null ? 'all' : encodeURIComponent(String(stage))}&recent=20`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const payload = (await response.json()) as UsageSnapshot
+          if (cancelled) return
+          setData(payload)
+          setError(null)
+          setPhase(phaseOf(stage, finalStage))
+        } catch (cause) {
+          if (cancelled || isAbort(cause)) return
+          setError(cause instanceof Error ? cause.message : String(cause))
+          loadedRange.current = null
+          break
+        }
       }
+      if (!cancelled) setLoading(false)
     }
-    setLoading(true)
     void load()
     return () => {
       cancelled = true
@@ -497,7 +531,7 @@ function useSummary(range: SummaryRange): SummaryState {
   }, [refreshMs])
 
   const refresh = useCallback(() => setNonce((value) => value + 1), [])
-  return { data, error, loading, refresh }
+  return { data, error, loading, phase, refresh }
 }
 
 function rangeLabel(range: SummaryRange, translate: Translate): string {
@@ -511,6 +545,7 @@ interface DailyState {
   data: DailyPayload | null
   error: string | null
   loading: boolean
+  phase: LoadPhase
   refresh: () => void
 }
 
@@ -519,31 +554,40 @@ function useDaily(range: SummaryRange): DailyState {
   const [data, setData] = useState<DailyPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [phase, setPhase] = useState<LoadPhase>('today')
   const [nonce, setNonce] = useState(0)
+  const loadedRange = useRef<SummaryRange | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    const stages = loadedRange.current === range ? [stageDays(range).at(-1) ?? null] : stageDays(range)
+    loadedRange.current = range
+    const finalStage = stages[stages.length - 1] ?? null
+
     const load = async (): Promise<void> => {
-      try {
-        const response = await fetch(`${DAILY_URL}?days=${encodeURIComponent(range)}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const payload = (await response.json()) as DailyPayload
-        if (cancelled) return
-        setData(payload)
-        setError(null)
-      } catch (cause) {
-        if (cancelled) return
-        if (cause !== null && typeof cause === 'object' && (cause as { name?: string }).name === 'AbortError') return
-        setError(cause instanceof Error ? cause.message : String(cause))
-      } finally {
-        if (!cancelled) setLoading(false)
+      setLoading(true)
+      for (const stage of stages) {
+        try {
+          const response = await fetch(`${DAILY_URL}?days=${stage === null ? 'all' : encodeURIComponent(String(stage))}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const payload = (await response.json()) as DailyPayload
+          if (cancelled) return
+          setData(payload)
+          setError(null)
+          setPhase(phaseOf(stage, finalStage))
+        } catch (cause) {
+          if (cancelled || isAbort(cause)) return
+          setError(cause instanceof Error ? cause.message : String(cause))
+          loadedRange.current = null
+          break
+        }
       }
+      if (!cancelled) setLoading(false)
     }
-    setLoading(true)
     void load()
     return () => {
       cancelled = true
@@ -560,7 +604,7 @@ function useDaily(range: SummaryRange): DailyState {
   }, [])
 
   const refresh = useCallback(() => setNonce((value) => value + 1), [])
-  return { data, error, loading, refresh }
+  return { data, error, loading, phase, refresh }
 }
 
 /** Model table columns, shared by every provider card and day detail. */
@@ -687,10 +731,12 @@ function DailyChart(props: {
   onMetricChange: (metric: ChartMetric) => void
   selectedDay: string | null
   onSelectDay: (day: string) => void
+  phase: LoadPhase
   translate: Translate
 }) {
-  const { days, metric, onMetricChange, selectedDay, onSelectDay, translate } = props
+  const { days, metric, onMetricChange, selectedDay, onSelectDay, phase, translate } = props
   if (days.length === 0) {
+    if (phase !== 'full') return h('p', { style: styles.chartHint }, translate('loading'))
     return h('div', { style: styles.empty }, [h('p', { key: 'title', style: styles.emptyTitle }, translate('chartEmpty'))])
   }
   const max = Math.max(...days.map((day) => chartValueOf(day, metric)))
@@ -1046,8 +1092,8 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
   const [range, setRange] = useState<SummaryRange>('30')
   const [chartMetric, setChartMetric] = useState<ChartMetric>('tokens')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const { data, error, loading, refresh } = useSummary(range)
-  const { data: dailyData, error: dailyError, loading: dailyLoading, refresh: refreshDaily } = useDaily(range)
+  const { data, error, loading, phase, refresh } = useSummary(range)
+  const { data: dailyData, error: dailyError, phase: dailyPhase } = useDaily(range)
 
   useEffect(() => {
     if (dailyData === null || dailyData.days.length === 0) return
@@ -1171,6 +1217,12 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
       )
     }
 
+    if (data !== null && phase !== 'full' && range !== '1') {
+      children.push(
+        h('div', { key: 'progressive', style: styles.notice }, translate('progressiveLoading')),
+      )
+    }
+
     if (backfill !== undefined && backfill.state === 'running') {
       children.push(
         h(
@@ -1185,7 +1237,7 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
 
     if (data === null) {
       children.push(h('p', { key: 'loading', style: styles.hint }, translate('loading')))
-    } else if (data.totals.calls === 0) {
+    } else if (data.totals.calls === 0 && phase === 'full') {
       children.push(
         h('div', { key: 'empty', style: styles.empty }, [
           h('p', { key: 'title', style: styles.emptyTitle }, translate('empty')),
@@ -1238,6 +1290,7 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
             onMetricChange: setChartMetric,
             selectedDay,
             onSelectDay: setSelectedDay,
+            phase: dailyPhase,
             translate,
           }),
         ]),

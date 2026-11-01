@@ -33,6 +33,11 @@ export function useState<T>(initial: T | (() => T)): [T, (value: T | ((previous:
   return getReact().useState(initial)
 }
 
+/** `useRef` through the bound React. */
+export function useRef<T>(initial: T): { current: T } {
+  return getReact().useRef(initial)
+}
+
 /** `useEffect` through the bound React. */
 export function useEffect(effect: () => void | (() => void), dependencies?: readonly unknown[]): void {
   // React's dependency list is readonly in practice; the cast keeps callers

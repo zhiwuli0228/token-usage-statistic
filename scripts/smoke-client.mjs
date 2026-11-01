@@ -19,6 +19,9 @@ const React = {
   useState(initial) {
     return [initial, () => {}]
   },
+  useRef(initial) {
+    return { current: initial }
+  },
   useEffect() {},
   useCallback(callback) {
     return callback
