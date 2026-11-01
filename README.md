@@ -74,7 +74,15 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 
 ## 安装
 
-本仓库是 bundle 包（`package.json` 的 `dsh.bundle.patch`），且已提交构建产物。用插件管理器按绝对路径安装：
+本仓库是 bundle 包（`package.json` 的 `dsh.bundle.patch`），且已提交构建产物。
+
+从 npm 安装：
+
+```
+plugin_manager( action: "install_bundle", target: "token-usage-statistic" )
+```
+
+或从本地目录安装：
 
 ```
 plugin_manager( action: "install_bundle", target: "E:\\009workspace\\dsh\\token-usage-statistic" )
