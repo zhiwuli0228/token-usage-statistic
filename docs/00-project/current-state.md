@@ -36,6 +36,7 @@ The plugin is usable and published. `1.0.2` is the latest npm release. `main` co
 - [x] Non-blocking session-title refresh (30s TTL, in-flight dedupe)
 - [x] Fixed daily chart date-label clipping
 - [x] Metric picker moved next to the chart with a live "current metric / total" line
+- [x] Project docs hub initialized (`00-project` → `99-archive`)
 
 ## Tests and Verification
 
