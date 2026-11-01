@@ -82,6 +82,7 @@
     chartMetricCalls: "Calls",
     chartMetricCost: "Cost",
     chartHint: "Click a bar to view the details for that day.",
+    chartCurrent: "Metric",
     chartEmpty: "No daily usage to chart yet.",
     dayDetailTitle: "Details for {{day}}",
     dayDetailSessions: "Sessions",
@@ -167,6 +168,7 @@
     chartMetricCalls: "\u8C03\u7528\u6B21\u6570",
     chartMetricCost: "\u9884\u4F30\u8D39\u7528",
     chartHint: "\u70B9\u51FB\u67F1\u72B6\u56FE\u67E5\u770B\u5F53\u5929\u7684\u8BE6\u60C5\u3002",
+    chartCurrent: "\u5F53\u524D\u6307\u6807",
     chartEmpty: "\u5C1A\u65E0\u6BCF\u65E5\u7528\u91CF\u6570\u636E\u3002",
     dayDetailTitle: "{{day}} \u8BE6\u60C5",
     dayDetailSessions: "\u4F1A\u8BDD",
@@ -584,6 +586,14 @@
       flexDirection: "column",
       gap: "12px"
     },
+    chartHead: {
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "12px",
+      flexWrap: "wrap"
+    },
+    chartTitleGroup: { display: "flex", flexDirection: "column", gap: "2px" },
     chartPlot: {
       boxSizing: "border-box",
       width: "100%",
@@ -891,14 +901,45 @@
     return formatCompact(value);
   }
   function DailyChart(props) {
-    const { days, metric, selectedDay, onSelectDay, translate } = props;
+    const { days, metric, onMetricChange, selectedDay, onSelectDay, translate } = props;
     if (days.length === 0) {
       return h("div", { style: styles.empty }, [h("p", { key: "title", style: styles.emptyTitle }, translate("chartEmpty"))]);
     }
     const max = Math.max(...days.map((day) => chartValueOf(day, metric)));
+    const total = days.reduce((sum, day) => sum + chartValueOf(day, metric), 0);
+    const costCurrency = days.find((day) => day.cost.currency !== null)?.cost.currency ?? null;
+    const costComplete = days.every((day) => day.cost.amount !== null);
+    const totalText = metric === "cost" ? costComplete ? formatMoney(total, costCurrency) : translate("budgetIncomplete") : `${metric === "calls" ? formatInteger(total) : formatCompact(total)} ${translate(metric === "calls" ? "calls" : "tokens")}`;
     const plotHeight = 160;
     const labelStep = Math.max(1, Math.ceil(days.length / 10));
     return h("div", { style: styles.chart }, [
+      h("div", { key: "head", style: styles.chartHead }, [
+        h("div", { key: "titleGroup", style: styles.chartTitleGroup }, [
+          h("h2", { key: "title", style: styles.sectionTitle }, translate("chartTitle")),
+          h(
+            "p",
+            { key: "summary", style: styles.chartHint },
+            `${translate("chartCurrent")}: ${translate(METRIC_LABELS[metric])} \xB7 ${translate("total")} ${totalText}`
+          )
+        ]),
+        h(
+          "div",
+          { key: "metricPicker", style: styles.segmented, role: "group", "aria-label": translate("chartTitle") },
+          ["tokens", "calls", "cost"].map(
+            (candidate) => h(
+              "button",
+              {
+                key: candidate,
+                type: "button",
+                "aria-pressed": metric === candidate,
+                onClick: () => onMetricChange(candidate),
+                style: metric === candidate ? { ...styles.segment, ...styles.segmentActive } : styles.segment
+              },
+              translate(METRIC_LABELS[candidate])
+            )
+          )
+        )
+      ]),
       h(
         "div",
         { key: "plot", style: styles.chartPlot },
@@ -1253,23 +1294,6 @@
               )
             )
           ),
-          h(
-            "div",
-            { key: "metrics", style: styles.segmented, role: "group", "aria-label": translate("chartTitle") },
-            ["tokens", "calls", "cost"].map(
-              (metric) => h(
-                "button",
-                {
-                  key: metric,
-                  type: "button",
-                  "aria-pressed": chartMetric === metric,
-                  onClick: () => setChartMetric(metric),
-                  style: chartMetric === metric ? { ...styles.segment, ...styles.segmentActive } : styles.segment
-                },
-                translate(METRIC_LABELS[metric])
-              )
-            )
-          ),
           data === null ? null : h("span", { key: "updated", style: styles.cellMuted }, `${translate("updated")} ${formatClock(data.generatedAt)}`)
         )
       );
@@ -1340,11 +1364,11 @@
         );
         children.push(
           h("section", { key: "days", style: styles.section }, [
-            h("h2", { key: "title", style: styles.sectionTitle }, translate("chartTitle")),
             h(DailyChart, {
               key: "chart",
               days: dailyData?.days ?? [],
               metric: chartMetric,
+              onMetricChange: setChartMetric,
               selectedDay,
               onSelectDay: setSelectedDay,
               translate

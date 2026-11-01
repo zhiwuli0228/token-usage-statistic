@@ -305,6 +305,14 @@ const styles: Record<string, Record<string, string | number>> = {
     flexDirection: 'column',
     gap: '12px',
   },
+  chartHead: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '12px',
+    flexWrap: 'wrap',
+  },
+  chartTitleGroup: { display: 'flex', flexDirection: 'column', gap: '2px' },
   chartPlot: {
     boxSizing: 'border-box',
     width: '100%',
@@ -676,18 +684,55 @@ function chartLabelOf(day: DayDetailView, metric: ChartMetric): string {
 function DailyChart(props: {
   days: DayDetailView[]
   metric: ChartMetric
+  onMetricChange: (metric: ChartMetric) => void
   selectedDay: string | null
   onSelectDay: (day: string) => void
   translate: Translate
 }) {
-  const { days, metric, selectedDay, onSelectDay, translate } = props
+  const { days, metric, onMetricChange, selectedDay, onSelectDay, translate } = props
   if (days.length === 0) {
     return h('div', { style: styles.empty }, [h('p', { key: 'title', style: styles.emptyTitle }, translate('chartEmpty'))])
   }
   const max = Math.max(...days.map((day) => chartValueOf(day, metric)))
+  const total = days.reduce((sum, day) => sum + chartValueOf(day, metric), 0)
+  const costCurrency = days.find((day) => day.cost.currency !== null)?.cost.currency ?? null
+  const costComplete = days.every((day) => day.cost.amount !== null)
+  const totalText =
+    metric === 'cost'
+      ? costComplete
+        ? formatMoney(total, costCurrency)
+        : translate('budgetIncomplete')
+      : `${metric === 'calls' ? formatInteger(total) : formatCompact(total)} ${translate(metric === 'calls' ? 'calls' : 'tokens')}`
   const plotHeight = 160
   const labelStep = Math.max(1, Math.ceil(days.length / 10))
   return h('div', { style: styles.chart }, [
+    h('div', { key: 'head', style: styles.chartHead }, [
+      h('div', { key: 'titleGroup', style: styles.chartTitleGroup }, [
+        h('h2', { key: 'title', style: styles.sectionTitle }, translate('chartTitle')),
+        h(
+          'p',
+          { key: 'summary', style: styles.chartHint },
+          `${translate('chartCurrent')}: ${translate(METRIC_LABELS[metric])} · ${translate('total')} ${totalText}`,
+        ),
+      ]),
+      h(
+        'div',
+        { key: 'metricPicker', style: styles.segmented, role: 'group', 'aria-label': translate('chartTitle') },
+        (['tokens', 'calls', 'cost'] as ChartMetric[]).map((candidate) =>
+          h(
+            'button',
+            {
+              key: candidate,
+              type: 'button',
+              'aria-pressed': metric === candidate,
+              onClick: () => onMetricChange(candidate),
+              style: metric === candidate ? { ...styles.segment, ...styles.segmentActive } : styles.segment,
+            },
+            translate(METRIC_LABELS[candidate]),
+          ),
+        ),
+      ),
+    ]),
     h(
       'div',
       { key: 'plot', style: styles.chartPlot },
@@ -1111,23 +1156,6 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
             ),
           ),
         ),
-        h(
-          'div',
-          { key: 'metrics', style: styles.segmented, role: 'group', 'aria-label': translate('chartTitle') },
-          (['tokens', 'calls', 'cost'] as ChartMetric[]).map((metric) =>
-            h(
-              'button',
-              {
-                key: metric,
-                type: 'button',
-                'aria-pressed': chartMetric === metric,
-                onClick: () => setChartMetric(metric),
-                style: chartMetric === metric ? { ...styles.segment, ...styles.segmentActive } : styles.segment,
-              },
-              translate(METRIC_LABELS[metric]),
-            ),
-          ),
-        ),
         data === null
           ? null
           : h('span', { key: 'updated', style: styles.cellMuted }, `${translate('updated')} ${formatClock(data.generatedAt)}`),
@@ -1203,11 +1231,11 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
       )
       children.push(
         h('section', { key: 'days', style: styles.section }, [
-          h('h2', { key: 'title', style: styles.sectionTitle }, translate('chartTitle')),
           h(DailyChart, {
             key: 'chart',
             days: dailyData?.days ?? [],
             metric: chartMetric,
+            onMetricChange: setChartMetric,
             selectedDay,
             onSelectDay: setSelectedDay,
             translate,
