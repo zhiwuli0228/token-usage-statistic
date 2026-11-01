@@ -84,23 +84,103 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 
 ## 安装
 
-本仓库是 bundle 包（`package.json` 的 `dsh.bundle.patch`），且已提交构建产物。
+### 兼容性
 
-从 npm 安装：
+| 运行环境 | 支持 | 面板 |
+| --- | --- | --- |
+| DSH Desktop | ✅ | 侧边栏「模型用量统计」 |
+| DSH Web (`dsh web`) | ✅ | 同一个侧边栏面板 |
+| DSH CLI / headless | ⚠️ 仅采集 | 无侧边栏；账本仍写入，但面板与 HTTP 导出依赖 Web 载体 |
 
-```
+插件是 **bundle 包**：`package.json` 同时声明 `dsh.bundle.patch` 和 `dsh.client.platform: "web"`。Host 负责采集、计价、账本和账户查询，Client 是同一份 Web 面板；Desktop 与 Web 加载同一份 `index.js` / `client.js`。
+
+### 前置条件
+
+- Node.js >= 20（从源码构建或本地开发时需要）
+- 已初始化的 DSH profile：`desktop` 或 `web`
+- 安装 npm 包时需要能访问 npm registry
+- 账户余额功能需要 DSH 已登录 DeepSeek 账户，或配置了对应 provider 凭据
+
+### 方式一：npm 包（推荐）
+
+**DSH Desktop**
+
+1. 打开 DSH Desktop → **插件 / Plugins**
+2. 搜索或直接输入包名 `token-usage-statistic`，点击安装
+3. 安装完成后重启 DSH Desktop（Host 代码只在启动时加载）
+4. 左侧边栏出现「模型用量统计」
+
+> 如果 Discover 里暂时搜不到，说明官方索引尚未同步；直接按包名安装即可。
+
+也可以在对话中让 agent 执行：
+
+```text
 plugin_manager( action: "install_bundle", target: "token-usage-statistic" )
 ```
 
-或从本地目录安装：
+**DSH Web**
 
+```bash
+dsh plugin --profile web add token-usage-statistic
+# 然后重启 dsh web
+dsh web
 ```
+
+### 方式二：GitHub 源码
+
+```bash
+dsh plugin --profile web add github:zhiwuli0228/token-usage-statistic
+```
+
+Desktop 端可以先 clone 到本地，再按方式三安装。
+
+### 方式三：本地目录（开发/调试）
+
+```text
 plugin_manager( action: "install_bundle", target: "E:\\009workspace\\dsh\\token-usage-statistic" )
 ```
 
-从 GitHub 安装时先 clone 到本地再按目录安装。安装后侧边栏出现「模型用量统计」入口。
+Web profile：
 
-> 本地目录是链接安装。**修改 `src/` 后必须 `npm run build`**，把 `index.js` / `client.js` 更新；只改源码不会生效。
+```bash
+dsh plugin --profile web add E:\009workspace\dsh\token-usage-statistic
+```
+
+本地目录是链接安装。修改 `src/` 后必须：
+
+```bash
+npm install
+npm run build
+```
+
+然后重启 Host 并刷新页面；只改源码不会生效。
+
+### 方式四：手动 patch（高级）
+
+如果不用插件管理器，可以把包加入 profile 的 `package.json` 依赖，并在 `cordis.patch.yml` 中插入：
+
+```yaml
+- insert:
+    - id: token-usage-statistic
+      name: token-usage-statistic
+```
+
+然后重新加载 profile。一般不需要这样做。
+
+### 安装后检查
+
+```bash
+# Web profile
+dsh plugin --profile web list | findstr token-usage-statistic
+```
+
+Desktop 端在 **插件** 页应能看到 `token-usage-statistic` 已启用。
+
+面板入口：左侧边栏 → **模型用量统计**。如果看不到入口，先确认 Host 已重启、页面已刷新。
+
+### 数据位置
+
+默认：`%DSH_HOME%\token-usage-statistic\usage.jsonl`。可用 `dataFile` 配置覆盖。
 
 ## 配置
 
