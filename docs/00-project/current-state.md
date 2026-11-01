@@ -38,6 +38,7 @@ The plugin is usable and published. `1.0.2` is the latest npm release. `main` co
 - [x] Metric picker moved next to the chart with a live "current metric / total" line
 - [x] Project docs hub initialized (`00-project` → `99-archive`)
 - [x] Project-level agent rules initialized (`AGENTS.md`)
+- [x] Single-file change records replace the four-file proposal/spec/tasks process (`docs/03-changes/`)
 
 ## Tests and Verification
 

@@ -68,7 +68,7 @@ docs/
 ├── 00-project/
 ├── 01-architecture/
 ├── 02-harness/
-├── 03-openspec/
+├── 03-changes/
 ├── 04-development/
 ├── 05-domain/
 ├── 06-operations/

@@ -12,9 +12,9 @@ When instructions conflict, apply this order:
 2. `docs/02-harness/*`
 3. `docs/01-architecture/*` and `docs/05-domain/*`
 4. `docs/00-project/*` and `docs/04-development/*`
-5. Change artifacts under `docs/03-openspec/changes/*`
+5. Change records under `docs/03-changes/*`
 
-A generated proposal, design, spec, or task list never overrides a hard constraint in this file. If a request conflicts with one, stop and ask the user.
+A change record or plan never overrides a hard constraint in this file. If a request conflicts with one, stop and ask the user.
 
 ---
 
@@ -102,18 +102,19 @@ Also read:
 3. `docs/06-operations/security-policy.md`
 4. `docs/06-operations/data-and-backup.md`
 
-### Change / Proposal Work
+### Change Record Work
 
 Also read:
 
-1. `docs/03-openspec/README.md`
-2. `docs/07-templates/*` as needed
+1. `docs/03-changes/README.md`
+2. `docs/07-templates/change-record-template.md`
+3. `docs/07-templates/design-template.md` for large changes
 
 ---
 
 ## 3. Hard Constraints
 
-These constraints take precedence over generated change artifacts.
+These constraints take precedence over any change record or plan.
 
 ### 3.1 Release Only on Explicit User Instruction
 
@@ -337,7 +338,7 @@ token-usage-statistic/
 │   ├── 00-project/
 │   ├── 01-architecture/
 │   ├── 02-harness/
-│   ├── 03-openspec/
+│   ├── 03-changes/
 │   ├── 04-development/
 │   ├── 05-domain/
 │   ├── 06-operations/
@@ -652,51 +653,74 @@ For UI changes, also run the manual checklist in `docs/02-harness/verification-p
 
 ---
 
-## 12. Change Process (OpenSpec-style)
+## 12. Change Records
 
-This repository does not currently mount an `openspec/` tool directory. The discipline still applies.
+This project uses a single, project-native change record for non-trivial changes. There is no proposal/design/spec/tasks pipeline.
 
-For a planned change, create:
+### When Required
+
+Write a record for:
+
+- new or changed HTTP route
+- ledger field, sample identity, or cache contract
+- pricing rule, model alias, or budget behavior
+- account source, scheme, or network boundary
+- loading strategy, polling, or panel behavior
+- export format or privacy boundary
+- build, packaging, or release automation
+
+Not required for typo fixes, documentation-only edits, or a one-line fix with no behavior or contract change.
+
+### Location
 
 ```text
-docs/03-openspec/changes/<change-id>/
-├── proposal.md
-├── design.md
-├── spec.md
-└── tasks.md
+docs/03-changes/YYYYMMDD-short-slug.md
 ```
 
-`change-id` format: `YYYYMMDD-short-slug`.
+Start from `docs/07-templates/change-record-template.md`.
 
-### Proposal
+When a change needs diagrams, contract tables, or an alternatives analysis, add:
 
-State problem, goal, in/out of scope, affected Host/Client modules, storage/API impact, privacy impact, risks, and verification plan.
+```text
+docs/03-changes/YYYYMMDD-short-slug.design.md
+```
 
-### Design
+from `docs/07-templates/design-template.md`.
 
-State data flow, module responsibilities, request/response or file contracts, failure behavior, memory/performance behavior, security considerations, and tests.
+### Contents
 
-Record durable architectural choices as ADRs under `docs/01-architecture/decisions/`.
+The record must answer, in order:
 
-### Spec
+1. Summary — what changed and why.
+2. Problem — observed behavior or gap, with evidence.
+3. Approach — chosen design and rejected alternatives.
+4. Affected modules — Host, Client, docs, build/release.
+5. Contracts — ledger, HTTP, UI state, privacy; state "none" explicitly.
+6. Verification — commands run and their results, plus manual checks for UI work.
+7. Risks and rollback.
+8. Follow-ups.
 
-Describe observable behavior: inputs, outputs, state transitions, error states, compatibility, acceptance examples.
+### Lifecycle
 
-### Tasks
+```text
+draft → implemented → historical
+```
 
-Ordered checklist: one capability per task, tests included, docs/current-state update included, release explicitly out of scope unless requested.
+A completed record stays under `docs/03-changes/` as history. Move it to `docs/99-archive/` only when it is superseded or no longer describes the system.
+
+### Durable Decisions
+
+Record architecture choices that outlive the change as an ADR under `docs/01-architecture/decisions/`. ADRs are numbered and never rewritten; supersede them with a new one.
 
 ### Bugfix
 
-Record symptom, root cause, regression test, affected module, and risk. A full proposal is not required, but a regression test is expected when practical.
+Use `docs/07-templates/bugfix-template.md`, or a short record with the same headings: symptom, root cause, fix, regression test, affected module, risk. A bugfix does not need a design document.
 
-### Archive
-
-When complete:
+### Completion
 
 - update `docs/00-project/current-state.md`
-- update affected architecture/domain docs
-- move inactive change docs to `docs/99-archive/`
+- update affected architecture and domain docs
+- leave the record at `implemented` with its verification results
 
 ---
 
@@ -707,12 +731,12 @@ For non-trivial features:
 ```text
 read docs
 → identify affected modules and contracts
-→ write or update proposal/design/spec/tasks
+→ write the change record
 → implement in small steps
 → add tests
 → run typecheck / test / build / bundle smoke / contract check
 → update docs/current-state
-→ archive the change
+→ mark the record implemented
 ```
 
 For small bug fixes:
@@ -839,6 +863,7 @@ Before considering work complete:
 - [ ] `node tools/check-contract.mjs` passes for packaging changes.
 - [ ] Storage/API contract changes are documented.
 - [ ] Relevant docs are updated.
+- [ ] A change record exists for non-trivial work and reflects what shipped.
 - [ ] `docs/00-project/current-state.md` is updated.
 - [ ] No credentials, prompts, replies, paths, or raw provider payloads were added to outputs.
 - [ ] No mandatory dependency or infrastructure was introduced.

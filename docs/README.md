@@ -18,6 +18,14 @@ Do not read every document blindly. Read documents based on task type.
 4. `docs/02-harness/harness-standard.md`
 5. `docs/04-development/development-guide.md`
 
+### Non-trivial Changes
+
+Also read:
+
+1. `docs/03-changes/README.md`
+2. `docs/07-templates/change-record-template.md`
+3. `docs/07-templates/design-template.md` for large changes
+
 ### Architecture Changes
 
 Also read:
@@ -77,7 +85,7 @@ docs/
 ├── 00-project/       # brief, current state, glossary, roadmap
 ├── 01-architecture/  # design, module boundaries, storage contract, ADRs
 ├── 02-harness/       # AI-assisted development harness standards
-├── 03-openspec/      # lightweight proposal/design/spec/tasks rules
+├── 03-changes/       # lightweight change records
 ├── 04-development/   # coding, testing, local run, client rules
 ├── 05-domain/        # token, pricing, accounts, budgets, exports
 ├── 06-operations/    # install, release, data, troubleshooting, security
