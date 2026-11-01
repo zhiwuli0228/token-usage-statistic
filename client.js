@@ -1224,7 +1224,7 @@
     useLocaleRevision(props.locale);
     const translate = props.translate;
     const [tab, setTab] = useState("usage");
-    const [range, setRange] = useState("30");
+    const [range, setRange] = useState("1");
     const [chartMetric, setChartMetric] = useState("tokens");
     const [selectedDay, setSelectedDay] = useState(null);
     const { data, error, loading, phase, refresh } = useSummary(range);

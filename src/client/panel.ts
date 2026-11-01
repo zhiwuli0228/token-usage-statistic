@@ -1089,7 +1089,7 @@ export function Panel(props: { translate: Translate; locale: LocaleLike }) {
   useLocaleRevision(props.locale)
   const translate = props.translate
   const [tab, setTab] = useState<PanelTab>('usage')
-  const [range, setRange] = useState<SummaryRange>('30')
+  const [range, setRange] = useState<SummaryRange>('1')
   const [chartMetric, setChartMetric] = useState<ChartMetric>('tokens')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const { data, error, loading, phase, refresh } = useSummary(range)
