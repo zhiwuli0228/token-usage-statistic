@@ -388,19 +388,25 @@
   }
   function cachedSummary(range) {
     const exact = readCache(`summary:${range}`);
-    if (isUsageSnapshot(exact)) return { data: exact, phase: "full" };
-    if (range !== "1") {
-      const today = readCache("summary:1");
-      if (isUsageSnapshot(today)) return { data: today, phase: "today" };
+    if (isUsageSnapshot(exact)) return { data: exact, phase: "full", covered: range === "all" ? null : Number(range) };
+    if (range === "1") return null;
+    const requested = range === "all" ? Number.POSITIVE_INFINITY : Number(range);
+    for (const days of [30, 7, 1]) {
+      if (days >= requested) continue;
+      const raw = readCache(`summary:${days}`);
+      if (isUsageSnapshot(raw)) return { data: raw, phase: days === 1 ? "today" : "partial", covered: days };
     }
     return null;
   }
   function cachedDaily(range) {
     const exact = readCache(`daily:${range}`);
-    if (isDailyPayload(exact)) return { data: exact, phase: "full" };
-    if (range !== "1") {
-      const today = readCache("daily:1");
-      if (isDailyPayload(today)) return { data: today, phase: "today" };
+    if (isDailyPayload(exact)) return { data: exact, phase: "full", covered: range === "all" ? null : Number(range) };
+    if (range === "1") return null;
+    const requested = range === "all" ? Number.POSITIVE_INFINITY : Number(range);
+    for (const days of [30, 7, 1]) {
+      if (days >= requested) continue;
+      const raw = readCache(`daily:${days}`);
+      if (isDailyPayload(raw)) return { data: raw, phase: days === 1 ? "today" : "partial", covered: days };
     }
     return null;
   }
@@ -819,7 +825,8 @@
         if (cached !== null) {
           setData(cached.data);
           setPhase(cached.phase);
-          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage !== 1);
+          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage === null || stage > (cached.covered ?? 0));
+          if (stages.length === 0) stages = [finalStage];
         } else {
           stages = stageDays(range);
         }
@@ -892,7 +899,8 @@
         if (cached !== null) {
           setData(cached.data);
           setPhase(cached.phase);
-          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage !== 1);
+          stages = cached.phase === "full" ? [finalStage] : stageDays(range).filter((stage) => stage === null || stage > (cached.covered ?? 0));
+          if (stages.length === 0) stages = [finalStage];
         } else {
           stages = stageDays(range);
         }

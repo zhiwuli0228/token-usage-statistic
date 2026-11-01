@@ -74,23 +74,29 @@ function isDailyPayload(value: unknown): value is DailyPayload {
   return value !== null && typeof value === 'object' && Array.isArray((value as Partial<DailyPayload>).days)
 }
 
-/** Best cached snapshot for a range: exact range first, then today. */
-function cachedSummary(range: SummaryRange): { data: UsageSnapshot; phase: LoadPhase } | null {
+/** Best cached snapshot for a range: exact, then the widest shorter window. */
+function cachedSummary(range: SummaryRange): { data: UsageSnapshot; phase: LoadPhase; covered: number | null } | null {
   const exact = readCache<unknown>(`summary:${range}`)
-  if (isUsageSnapshot(exact)) return { data: exact, phase: 'full' }
-  if (range !== '1') {
-    const today = readCache<unknown>('summary:1')
-    if (isUsageSnapshot(today)) return { data: today, phase: 'today' }
+  if (isUsageSnapshot(exact)) return { data: exact, phase: 'full', covered: range === 'all' ? null : Number(range) }
+  if (range === '1') return null
+  const requested = range === 'all' ? Number.POSITIVE_INFINITY : Number(range)
+  for (const days of [30, 7, 1]) {
+    if (days >= requested) continue
+    const raw = readCache<unknown>(`summary:${days}`)
+    if (isUsageSnapshot(raw)) return { data: raw, phase: days === 1 ? 'today' : 'partial', covered: days }
   }
   return null
 }
 
-function cachedDaily(range: SummaryRange): { data: DailyPayload; phase: LoadPhase } | null {
+function cachedDaily(range: SummaryRange): { data: DailyPayload; phase: LoadPhase; covered: number | null } | null {
   const exact = readCache<unknown>(`daily:${range}`)
-  if (isDailyPayload(exact)) return { data: exact, phase: 'full' }
-  if (range !== '1') {
-    const today = readCache<unknown>('daily:1')
-    if (isDailyPayload(today)) return { data: today, phase: 'today' }
+  if (isDailyPayload(exact)) return { data: exact, phase: 'full', covered: range === 'all' ? null : Number(range) }
+  if (range === '1') return null
+  const requested = range === 'all' ? Number.POSITIVE_INFINITY : Number(range)
+  for (const days of [30, 7, 1]) {
+    if (days >= requested) continue
+    const raw = readCache<unknown>(`daily:${days}`)
+    if (isDailyPayload(raw)) return { data: raw, phase: days === 1 ? 'today' : 'partial', covered: days }
   }
   return null
 }
@@ -539,7 +545,11 @@ function useSummary(range: SummaryRange): SummaryState {
       if (cached !== null) {
         setData(cached.data)
         setPhase(cached.phase)
-        stages = cached.phase === 'full' ? [finalStage] : stageDays(range).filter((stage) => stage !== 1)
+        stages =
+          cached.phase === 'full'
+            ? [finalStage]
+            : stageDays(range).filter((stage) => stage === null || stage > (cached.covered ?? 0))
+        if (stages.length === 0) stages = [finalStage]
       } else {
         stages = stageDays(range)
       }
@@ -627,7 +637,11 @@ function useDaily(range: SummaryRange): DailyState {
       if (cached !== null) {
         setData(cached.data)
         setPhase(cached.phase)
-        stages = cached.phase === 'full' ? [finalStage] : stageDays(range).filter((stage) => stage !== 1)
+        stages =
+          cached.phase === 'full'
+            ? [finalStage]
+            : stageDays(range).filter((stage) => stage === null || stage > (cached.covered ?? 0))
+        if (stages.length === 0) stages = [finalStage]
       } else {
         stages = stageDays(range)
       }
