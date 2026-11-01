@@ -1,0 +1,136 @@
+# Release automation: pushing a vX.Y.Z tag runs the suite, checks the tag against
+# package.json, publishes to npm, and opens the GitHub release.
+#
+# Auth is npm **trusted publishing** (OIDC), so no token is stored in this repository
+# and the maintainer's 2FA is not needed. See the setup notes at the bottom of this
+# file -- without that one-time npm-side configuration the publish step fails with
+# an authentication error, not a broken build.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  # Manual runs default to a dry run: they pack and verify, and publish nothing.
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Pack and verify without publishing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # npm trusted publishing (OIDC) and provenance attestation
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      # A tag that disagrees with package.json publishes the wrong version under the
+      # right name, which is not something a later step can undo. On a manual run the
+      # ref is a branch, so there is no tag to compare against.
+      - name: Check the tag matches package.json
+        id: tag
+        run: |
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs'
+            const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
+            const ref = process.env.GITHUB_REF_NAME ?? ''
+            const tagged = ref.startsWith('v') ? ref.slice(1) : ''
+            if (tagged && tagged !== manifest.version) {
+              throw new Error('tag v' + tagged + ' does not match package.json ' + manifest.version)
+            }
+            console.log('version ' + manifest.version + (tagged ? ' (tag v' + tagged + ')' : ' (manual run, no tag check)'))
+          "
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: node tools/check-contract.mjs
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      # Trusted publishing needs npm >= 11.5.1; the runner image may ship older.
+      - name: Use the latest npm
+        run: npm install -g npm@latest
+
+      # One screen of context if the publish fails. The OIDC request variables are
+      # what npm exchanges for a publish token, and their absence is the likeliest
+      # reason a workflow that looks configured still cannot authenticate -- worth
+      # distinguishing from a trusted-publisher mismatch, which reports as a 404.
+      - name: Preflight
+        run: |
+          echo "npm $(npm --version) on node $(node --version)"
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "OIDC request endpoint: present (trusted publishing can authenticate)"
+          else
+            echo "OIDC request endpoint: MISSING -- the job needs 'permissions: id-token: write'"
+          fi
+          npm ping
+
+      # `npm publish --dry-run` still consults the registry, so running it against an
+      # already-published version fails with "You cannot publish over the previously
+      # published versions" (exit 1). That is the intended use: dispatch this against
+      # a bumped-but-unreleased version to confirm the tarball and metadata before
+      # tagging. Exit 0 there means the real publish will pack the same files.
+      - name: Publish (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry-run
+        run: |
+          npm publish --access public --dry-run
+          echo "dry run: nothing was published."
+
+      - name: Publish
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry-run)
+        run: npm publish --access public --provenance
+
+      # Created after the publish succeeds, so a release never advertises a version
+      # that failed to upload. Idempotent: a re-run attaches to the existing release.
+      - name: Create the GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+
+# ── One-time setup (npm side) ───────────────────────────────────────────────
+#
+# npmjs.com -> the package -> Settings -> Trusted Publisher -> GitHub Actions:
+#
+#   Organization or user : zhiwuli0228
+#   Repository           : token-usage-statistic
+#   Workflow filename    : release.yml
+#   Environment          : (leave empty -- this workflow declares none)
+#
+# Until that is saved, the publish step fails to authenticate. It is a deliberate
+# one-time step rather than a stored secret: nothing to leak, nothing to rotate, and
+# npm signs the artifact with a provenance attestation that names this repository and
+# commit.
+#
+# Prefer a token instead? Create a granular access token with "Bypass 2FA", add it as
+# the repository secret NPM_TOKEN, and give the publish steps
+#   env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
+# A token expires and can be revoked by anyone who reads it; trusted publishing
+# cannot be replayed off a leaked string. The token path also skips provenance.
