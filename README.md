@@ -2,7 +2,17 @@
 
 DeepSeek Harness（DSH）插件：统计**本机所有模型调用**的 token 用量与**按事件时间估算的费用**，提供历史回填、账户余额/订阅额度、日/月预算与无凭据导出，并在侧边栏面板中呈现。同时适配 DSH Desktop 与 DSH Web —— 两者加载同一份 Web 客户端包和同一套 Host 插件图，因此只有一份实现。
 
-`1.0.0` 是首个稳定版本：在用量与费用的基础上，补齐账户余额/订阅额度、日/月预算、无凭据导出、每日用量图表，以及会话名称与工作区名称的友好展示。
+`1.0.1` 是 1.0 系列的首个补丁：修复每日用量图表的日期标签被裁切的问题，并补充关键界面截图；功能与 `1.0.0` 一致。
+
+## 界面预览
+
+![用量总览：指标、提供方/模型排行与每日图表](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/usage-overview.png)
+
+![每日用量图表与当天详情：点击柱子查看会话、模型和工作区名称](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/usage-chart.png)
+
+| 账户余额与订阅额度 | 无凭据导出 |
+| --- | --- |
+| ![账户](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/accounts.png) | ![导出](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/export.png) |
 
 ## 能力
 

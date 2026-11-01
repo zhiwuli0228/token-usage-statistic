@@ -587,11 +587,11 @@
     chartPlot: {
       boxSizing: "border-box",
       width: "100%",
-      height: "180px",
+      height: "200px",
       display: "flex",
       alignItems: "flex-end",
       gap: "3px",
-      padding: "8px 0 28px",
+      padding: "12px 0 34px",
       borderBottom: "0.5px solid var(--dsw-alias-border-l1, #e2e2e2)"
     },
     chartBarCol: {
@@ -613,17 +613,18 @@
       maxWidth: "24px",
       minHeight: "2px",
       borderRadius: "4px 4px 0 0",
-      background: "var(--dsw-alias-bg-layer-2, rgba(0,0,0,0.08))"
+      background: "var(--dsw-alias-brand-primary, #2563eb)",
+      opacity: 0.35
     },
     chartBarActive: {
-      background: "var(--dsw-alias-brand-primary, #2563eb)"
+      background: "var(--dsw-alias-brand-primary, #2563eb)",
+      opacity: 1
     },
     chartLabel: {
       position: "absolute",
-      bottom: "-22px",
+      bottom: "-26px",
       left: "50%",
-      transform: "translateX(-50%) rotate(-35deg)",
-      transformOrigin: "left top",
+      transform: "translateX(-50%)",
       fontSize: "10px",
       color: "var(--dsw-alias-label-secondary, inherit)",
       whiteSpace: "nowrap"
@@ -896,11 +897,12 @@
     }
     const max = Math.max(...days.map((day) => chartValueOf(day, metric)));
     const plotHeight = 160;
+    const labelStep = Math.max(1, Math.ceil(days.length / 10));
     return h("div", { style: styles.chart }, [
       h(
         "div",
         { key: "plot", style: styles.chartPlot },
-        days.map((day) => {
+        days.map((day, index) => {
           const value = chartValueOf(day, metric);
           const barHeight = max > 0 ? Math.max(2, value / max * plotHeight) : 2;
           const selected = selectedDay === day.day;
@@ -922,7 +924,7 @@
                   ...selected ? styles.chartBarActive : {}
                 }
               }),
-              h("span", { key: "label", style: styles.chartLabel }, day.day.slice(5))
+              index % labelStep === 0 || index === days.length - 1 ? h("span", { key: "label", style: styles.chartLabel }, day.day.slice(5)) : null
             ]
           );
         })

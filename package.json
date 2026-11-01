@@ -1,6 +1,6 @@
 {
   "name": "token-usage-statistic",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Token usage, estimated cost, provider balances and quotas, budgets, and secret-free exports for DeepSeek Harness, rendered in a sidebar panel on the Web and Desktop UI.",
   "license": "MIT",
   "author": "zhiwuli0228",
