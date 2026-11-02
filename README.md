@@ -104,7 +104,25 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 
 ### Desktop 的命令行入口
 
-桌面版用的就是 `dsh plugin --profile desktop ...`。能否直接执行，取决于这个 `dsh` 来自哪里：
+桌面版用的就是 `dsh plugin --profile desktop ...`。能否直接执行，取决于这个 `dsh` 来自哪里。
+
+`dsh` 是 DeepSeek Harness 的命令行入口。桌面版**不会**把它加进 PATH：App 把运行时（Node、pnpm、dsh）放在安装目录里，直接敲 `dsh` 可能找不到，也可能命中 npm 全局安装的另一个版本。为此本仓库提供了一条不依赖 PATH 的命令：
+
+```powershell
+npm run plugin:install -- desktop
+```
+
+它会自动定位 App 自带的 CLI、检查 App 是否已退出，并默认把**当前仓库**链接进 `desktop` profile。常用参数：
+
+| 参数 | 作用 |
+| --- | --- |
+| `--npm` | 安装 npm 上已发布的包，而不是当前仓库 |
+| `--offline` | 让 pnpm 不访问 registry |
+| `--dry-run` | 只打印将执行的命令，不写任何东西 |
+| `--remove` | 卸载 |
+| `--home <dir>` / `--cli <path>` | 指定 DSH_HOME / CLI（一般不用） |
+
+以下是手动执行时的说明；只有不在本仓库、或需要直接调用 CLI 时才用得到。
 
 | `dsh` 来源 | `--profile desktop` |
 | --- | --- |
@@ -130,7 +148,7 @@ dsh --version
 - **Windows**：默认（按用户安装）位于 `%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`；装在别处时换成实际安装目录。
 - **macOS**：应用菜单 → **管理 dsh 命令…** → **安装**，之后直接使用 `dsh`。
 
-下文用 `$dsh` 代表 Desktop 自带 `dsh` 的完整路径；在新的 PowerShell 窗口里先执行这一行：
+手动执行时，下文用 `$dsh` 代表 Desktop 自带 `dsh` 的完整路径；在新的 PowerShell 窗口里先执行这一行：
 
 ```powershell
 $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
@@ -147,6 +165,7 @@ $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\ds
 - 已初始化的 DSH profile：Desktop 至少启动过一次（会自动创建 `desktop` profile）；Web 由 `dsh web` 或首次 `dsh plugin --profile web` 初始化
 - 安装 npm 包时需要能访问 npm registry
 - 完全无法访问 npm registry 的环境用**方式三**的 `--offline` 本地安装，不需要 registry
+- Desktop 不要求 PATH 上有 `dsh`：`npm run plugin:install -- desktop` 会自动定位 App 自带的 CLI
 - 用 npm 安装的 `dsh` 执行 `dsh plugin` 时，需要 `pnpm` 在 PATH 上（Desktop 自带的 `dsh` 已内置 pnpm，无需另装）
 - 账户余额功能需要 DSH 已登录 DeepSeek 账户，或配置了对应 provider 凭据
 
@@ -172,6 +191,8 @@ $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\ds
 ```
 
 安装成功后，包会出现在 `desktop` profile 的 `dsh.profile.bundles` 里，下次启动即加载。
+
+也可以让脚本自动找 CLI：`npm run plugin:install -- desktop --npm`（`--npm` 表示安装 registry 上的包）。
 
 在 Desktop 会话里也可以让 agent 执行（`plugin_manager` 作用于当前会话所在的 profile）：
 
@@ -203,7 +224,20 @@ git 托管安装需要本机有 `git`。如果 pnpm 拦截了包的构建脚本�
 
 本插件尚未收录进官方插件库，Discover/市场搜不到时用这一节；目标机器完全无法访问 npm registry 时也用这一节。安装不需要构建：仓库已提交 `index.js`、`client.js` 等构建产物。
 
-**准备（在一台能拿到源码的机器上）**
+**在本仓库里（推荐）**
+
+```powershell
+# 先完全退出 Desktop
+npm run plugin:install -- desktop            # 链接当前仓库，自动找 Desktop 自带 dsh
+npm run plugin:install -- desktop --offline  # 明确不访问 registry
+npm run plugin:install -- desktop --dry-run  # 只看将执行什么
+```
+
+脚本会自动定位 App 自带的 `dsh`、检查 App 是否已退出，并把当前仓库链接进 `desktop` profile；`--npm` 改为安装 npm 上已发布的包。Web 用 `npm run plugin:install -- web`（需要 PATH 上有 `pnpm`）。
+
+**拷贝到目标机器后（没有本仓库 / 手动 CLI）**
+
+准备：
 
 - 直接复制整个目录，至少包含 `package.json`、`index.js`、`client.js`、`cordis.patch.yml`、`locale/`、`icon.svg`。
 - 或打包成 tarball：在仓库根目录执行 `npm pack`，得到 `token-usage-statistic-<version>.tgz`。

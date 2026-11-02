@@ -44,6 +44,25 @@ At least one counted sample is unpriced, or currencies are mixed. Extend `pricin
 
 The endpoints are loopback-only. Do not expose them through a reverse proxy.
 
+## Desktop Has No `dsh` Command
+
+`dsh` is the DeepSeek Harness CLI. Desktop ships its own copy inside the app directory but does **not** add it to PATH, so typing `dsh` may find nothing, or may find a different npm-installed version.
+
+Inside this repository, use the wrapper that locates the app's CLI for you:
+
+```powershell
+npm run plugin:install -- desktop
+```
+
+Outside the repository (or when driving the CLI directly), call the bundled path:
+
+```powershell
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+& $dsh plugin --profile desktop add token-usage-statistic
+```
+
+You do not need to modify PATH.
+
 ## `dsh plugin --profile desktop` Is Rejected
 
 ```text
@@ -52,7 +71,13 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 The active `dsh` is an npm install at `>= 0.1.5-alpha.1`. Older npm CLIs (`<= 0.1.3`) allowed `--profile desktop`; newer ones reserve it for the Desktop application.
 
-Run `where.exe dsh` and `dsh --version` to confirm. If it resolves to the npm CLI, use Desktop's bundled `dsh` instead (it supports the desktop profile and bundles pnpm):
+Run `where.exe dsh` and `dsh --version` to confirm. If it resolves to the npm CLI, use Desktop's bundled `dsh` instead (it supports the desktop profile and bundles pnpm), or run the wrapper in this repository:
+
+```powershell
+npm run plugin:install -- desktop
+```
+
+Manual equivalent:
 
 ```powershell
 $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"

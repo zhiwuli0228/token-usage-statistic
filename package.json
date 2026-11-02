@@ -39,6 +39,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bundle": "node scripts/smoke-client.mjs",
+    "plugin:install": "node tools/plugin-install.mjs",
+    "plugin:remove": "node tools/plugin-install.mjs --remove",
     "check": "npm run typecheck && npm run build && npm run test && npm run test:bundle"
   },
   "keywords": [

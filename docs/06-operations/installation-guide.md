@@ -12,7 +12,17 @@ Desktop and Web use separate profiles (`desktop` / `web`). Installing in one doe
 
 ## The Desktop CLI Entry Point
 
-Desktop installs use `dsh plugin --profile desktop ...`. Whether that command works as typed depends on where `dsh` comes from:
+Desktop installs use `dsh plugin --profile desktop ...`. Whether that command works as typed depends on where `dsh` comes from.
+
+`dsh` is the DeepSeek Harness CLI. Desktop does **not** add its bundled CLI to PATH: typing `dsh` may find nothing, or a different npm-installed version. This repository ships a wrapper that finds it:
+
+```powershell
+npm run plugin:install -- desktop
+```
+
+It locates the app's CLI, checks that Desktop is quit, and links the current checkout into the `desktop` profile. `--npm` installs the published package, `--offline` skips the registry, `--dry-run` only prints the command, and `--remove` uninstalls.
+
+The manual instructions below apply outside the repository, or when calling the CLI directly.
 
 | Source of `dsh` | `--profile desktop` |
 | --- | --- |
@@ -55,6 +65,7 @@ Fully quit Desktop (including the tray icon) before an install or removal, then 
 - An initialized DSH profile: Desktop must have started at least once (it creates the `desktop` profile); Web is initialized by `dsh web` or the first `dsh plugin --profile web`
 - npm registry access for the npm install path
 - For hosts with no npm registry access, use the offline local install below (`--offline`); no registry is needed
+- Desktop does not require `dsh` on PATH: `npm run plugin:install -- desktop` finds the app's bundled CLI
 - `pnpm` on PATH when using the npm-installed `dsh plugin` (Desktop's bundled `dsh` already contains pnpm)
 - DeepSeek account or provider credentials for balance queries
 
@@ -81,6 +92,8 @@ Command line (equivalent):
 ```
 
 On success the package joins the `desktop` profile's `dsh.profile.bundles` and loads on the next start.
+
+You can also run `npm run plugin:install -- desktop --npm` to let the wrapper find the CLI.
 
 Inside a Desktop session, an agent can also run (the tool targets the current session's profile):
 
@@ -110,6 +123,16 @@ Git-hosted installs need `git` on PATH. If pnpm blocks a package build script, a
 ## Local Install (Not in the Catalog / No npm Access)
 
 The plugin is not in the official catalog, and some hosts cannot reach npm. Both cases use a local copy. No build step is required: the repository ships `index.js`, `client.js`, and the other runtime files.
+
+**From this repository (recommended)**
+
+```powershell
+npm run plugin:install -- desktop
+npm run plugin:install -- desktop --offline
+npm run plugin:install -- web
+```
+
+The wrapper finds Desktop's bundled CLI, checks that the app is quit, and links this checkout. `--npm` installs the published package instead.
 
 **Prepare on a machine that has the source**
 

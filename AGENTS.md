@@ -804,11 +804,12 @@ Local load:
 
 ```text
 DSH Desktop: restart the app after Host changes; refresh after Client changes.
-             Plugin installs: dsh plugin --profile desktop add <pkg>
-             (Desktop's bundled dsh supports it; npm dsh >= 0.1.5-alpha.1 rejects it, so call the bundled path when needed):
-             & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add <pkg>
-             Offline (no npm registry): append --offline and use a local folder or the `npm pack` tarball:
-             & "$env:LOCALAPPDATA\...\dsh.cmd" plugin --profile desktop add <folder-or-tgz> --offline
+             Preferred install (finds the app's bundled dsh; links this checkout):
+             npm run plugin:install -- desktop
+             npm run plugin:install -- desktop --npm        # published package
+             npm run plugin:install -- desktop --offline    # no registry
+             Manual/offline: & "$env:LOCALAPPDATA\...\dsh.cmd" plugin --profile desktop add <folder-or-tgz> --offline
+             (Desktop's bundled dsh is required; npm dsh >= 0.1.5-alpha.1 rejects --profile desktop)
 DSH Web:     dsh plugin --profile web add token-usage-statistic
              dsh web
 ```
