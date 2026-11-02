@@ -4,6 +4,10 @@ DeepSeek Harness（DSH）插件：统计**本机所有模型调用**的 token �
 
 `1.0.2` 把每日图表的指标切换（Tokens / 调用次数 / 预估费用）移到图表标题旁，并增加“当前指标 · 合计”摘要，切换后能直接看到数值和柱状图变化；同时补齐了 Desktop / Web 的安装说明。
 
+> **Desktop**：`npm run plugin:install -- desktop` · **Web**：`dsh plugin --profile web add token-usage-statistic`
+
+[安装](#安装) · [使用](#使用) · [配置](#配置) · [开发](#开发) · [排障](#排障) · [参考](#参考) · [完整文档](docs/README.md)
+
 ## 界面预览
 
 ![用量总览：指标、提供方/模型排行与每日图表](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/usage-overview.png)
@@ -13,12 +17,6 @@ DeepSeek Harness（DSH）插件：统计**本机所有模型调用**的 token �
 | 账户余额与订阅额度 | 无凭据导出 |
 | --- | --- |
 | ![账户](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/accounts.png) | ![导出](https://raw.githubusercontent.com/zhiwuli0228/token-usage-statistic/main/docs/screenshots/export.png) |
-
-## 文档
-
-项目级文档入口：[docs/README.md](https://github.com/zhiwuli0228/token-usage-statistic/blob/main/docs/README.md)
-
-包含架构、存储契约、Harness 规则、开发规范、领域规则、安装/发布/排障、ADR 模板。
 
 ## 能力
 
@@ -84,13 +82,40 @@ src/host/config.ts         配置归一化
 src/host/index.ts          Host 入口 apply()
 src/client/*.ts            React 面板、格式化、i18n、React 绑定
 index.js / client.js       esbuild 构建产物（仓库内提交）
-test/                      vitest 单元测试（120 个）
+test/                      vitest 单元测试（135 个）
 scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
+tools/plugin-install.mjs   安装脚本：定位 Desktop 自带 dsh，链接/安装本包
 ```
 
 ## 安装
 
-### 兼容性
+> Desktop 与 Web 使用不同的 profile（`desktop` / `web`），两端都装需各执行一次。Desktop 安装前先**完全退出 App（含托盘图标）**。本地安装脚本需要 Node.js ≥ 20；只走图形界面安装则不需要。
+
+**DSH Desktop**（不需要 PATH 上有 `dsh`）
+
+```powershell
+npm run plugin:install -- desktop        # 链接当前仓库
+npm run plugin:install -- desktop --npm  # 安装 npm 上已发布的包
+```
+
+**DSH Web**
+
+```bash
+dsh plugin --profile web add token-usage-statistic
+dsh web
+```
+
+> Web 走 npm 安装的 `dsh`，需要 PATH 上有 `pnpm`；Desktop 自带的 `dsh` 已内置 pnpm。
+
+图形界面（Desktop）：**插件 / Plugins** → 输入 `token-usage-statistic` → 安装 → 重启 Desktop。
+
+装完后侧栏出现「模型用量统计」。入口没出现？→ [排障](#排障)。
+
+> 本插件尚未收录官方插件库，Discover / 市场搜不到是正常的；按包名安装即可。
+
+GitHub 源码、本地目录 / tarball、离线安装、手动 patch、卸载 → [安装细节](#安装细节)。
+
+**兼容性**
 
 | 运行环境 | 支持 | 面板 |
 | --- | --- | --- |
@@ -98,199 +123,197 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 | DSH Web (`dsh web`) | ✅ | 同一个侧边栏面板 |
 | DSH CLI / headless | ⚠️ 仅采集 | 无侧边栏；账本仍写入，但面板与 HTTP 导出依赖 Web 载体 |
 
-插件是 **bundle 包**：`package.json` 同时声明 `dsh.bundle.patch` 和 `dsh.client.platform: "web"`。Host 负责采集、计价、账本和账户查询，Client 是同一份 Web 面板；Desktop 与 Web 加载同一份 `index.js` / `client.js`。
+## 使用
 
-> Desktop 与 Web 使用不同的 profile（`desktop` / `web`），安装是分开的：在 Desktop 安装不会自动出现在 Web，反之亦然。两端都需要时，各装一次。
+- 侧栏 →「模型用量统计」，三个标签：**用量 / 账户 / 导出**。
+- 时间范围：今天 / 7 天 / 30 天 / 全部；图表指标：Tokens / 调用次数 / 预估费用。
+- 点每日柱子查看当天会话、模型与工作区；数据在启动后自动回填。
 
-### Desktop 的命令行入口
+## 配置
 
-桌面版用的就是 `dsh plugin --profile desktop ...`。能否直接执行，取决于这个 `dsh` 来自哪里。
+最小示例：
 
-`dsh` 是 DeepSeek Harness 的命令行入口。桌面版**不会**把它加进 PATH：App 把运行时（Node、pnpm、dsh）放在安装目录里，直接敲 `dsh` 可能找不到，也可能命中 npm 全局安装的另一个版本。为此本仓库提供了一条不依赖 PATH 的命令：
-
-```powershell
-npm run plugin:install -- desktop
+```yaml
+- override:
+    - id: token-usage-statistic
+      config:
+        refreshMs: 15000
+        budgets:
+          currency: USD
+          daily: 5
+          monthly: 50
 ```
 
-它会自动定位 App 自带的 CLI、检查 App 是否已退出，并默认把**当前仓库**链接进 `desktop` profile。常用参数：
+完整字段（`dataFile`、`sessionLimit`、`backfill`、`modelAliases`、`pricing`、`accounts.monitors`）见 [配置参考](#配置参考)。
 
-| 参数 | 作用 |
+## 账户与额度
+
+自动发现三类来源：
+
+1. **DSH Desktop 账户**（`deepseekAccount` Host 服务）：登录后读取充值/赠送钱包；未登录显示「未登录」。
+2. **官方 DeepSeek API Key**（`llm-deepseek`）：`GET /user/balance`。
+3. **`llm-pi-ai` provider**：按 provider id 或 host 匹配内置 scheme（DeepSeek、Moonshot、Z.AI、OpenRouter、OrcaRouter）；没有公开接口的 provider 显示「无公开接口」，不会发起猜测性请求。
+
+`accounts.monitors` 可以补上任意私有监控端点：`baseURL` 必须是完整 URL，数值用 JSON Pointer 选取；`mode: subscription` 时用 `windows` 指针选取额度数组。
+
+- 刷新在后台进行（默认 10 分钟），面板「刷新账户」会立即触发一次。
+- 最近一次结果写入 `accounts.json`，重启后先显示旧值并标记 stale，直到刷新成功。
+- 凭据只经 `ctx.credentials` 在 Host 内解析，响应与导出都不含密钥、请求头或上游原始 JSON。
+
+## 预算
+
+`budgets.daily` / `budgets.monthly` 与 `budgets.currency` 定义上限。预算只汇总面板已经展示的同一批费用估算：
+
+- 达到 80% 为 `warn`，达到 100% 为 `exceeded`；
+- 窗口内任一样本未定价或币种不一致时，`costComplete: false`，不下结论、不显示百分比；
+- 未配置上限时不显示预算条。
+
+## 导出
+
+| 端点 | 内容 |
 | --- | --- |
-| `--npm` | 安装 npm 上已发布的包，而不是当前仓库 |
-| `--offline` | 让 pnpm 不访问 registry |
-| `--dry-run` | 只打印将执行的命令，不写任何东西 |
-| `--remove` | 卸载 |
-| `--home <dir>` / `--cli <path>` | 指定 DSH_HOME / CLI（一般不用） |
+| `GET /token-usage-statistic/api/export/daily.csv` | 每行一个日期 + provider + model |
+| `GET /token-usage-statistic/api/export/sessions.csv` | 每行一个会话及其 provider/model 集合 |
+| `GET /token-usage-statistic/api/export.json` | `schemaVersion: 1.0.0`，含用量、预算与账户快照 |
 
-以下是手动执行时的说明；只有不在本仓库、或需要直接调用 CLI 时才用得到。
+CSV 带 UTF-8 BOM、CRLF、双引号转义，并对以 `= + - @` 开头的文本加前导单引号（防公式注入）。导出只复制允许列表字段，不含提示词、回复、文件路径或凭据。
 
-| `dsh` 来源 | `--profile desktop` |
+## 价格口径
+
+内置目录为 DeepSeek 官方 USD 价（每 1M tokens），覆盖 `deepseek-v4-flash` / `deepseek-v4-pro` 的三段历史：平价期、全周峰谷期、工作日峰谷期；峰时段为上海时间 09:00–12:00 与 14:00–18:00。
+
+- 桌面账号路由上报的 `deepseek-flash` / `deepseek-pro` 通过内置别名映射到 `v4` 规则；可用 `modelAliases` 覆盖。
+- 只有 `pricing.providers` 内的路由会被计价；第三方网关默认**未定价**。
+- 任一样本缺少可靠单价时金额为 `null`，面板显示「—」并提示未定价样本数；token 总数不受影响。
+
+## API
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/token-usage-statistic/api/summary` | 用量、费用、预算、回填状态；`days=1\|7\|30\|all` |
+| `GET` | `/token-usage-statistic/api/accounts` | 账户快照；`refresh=1` 触发后台刷新 |
+| `GET` | `/token-usage-statistic/api/export/daily.csv` | 按日 provider/model CSV |
+| `GET` | `/token-usage-statistic/api/export/sessions.csv` | 会话 CSV |
+| `GET` | `/token-usage-statistic/api/export.json` | 版本化 JSON |
+
+所有端点只读、仅回环、`cache-control: no-store`；非回环请求返回 `403`，非 GET/HEAD 返回 `405`。
+
+## 数据与迁移
+
+- 账本：默认 `%DSH_HOME%\token-usage-statistic\usage.jsonl`，一行一个样本。
+- `accounts.json`：最近一次账户快照，可删；不会包含凭据。
+- `activation.json`：每次激活的路由回执（`registered` / 失败原因），排障用，可删。
+- v1 记录（无 `sampleKey`）在加载时自动迁移为 `assistant:<seq>`。
+- 清空重来：停用插件 → 删除 `usage.jsonl` → 启用（会重新回填历史）。
+
+字段与迁移规则见 [存储契约](docs/01-architecture/storage-contract.md)。
+
+## 开发
+
+```powershell
+npm install
+npm run build       # esbuild → index.js + client.js
+npm run typecheck   # tsc --noEmit
+npm test            # vitest，135 个用例
+npm run test:bundle # 对构建后的 client.js 做假 shell 冒烟
+npm run check       # typecheck + build + test + bundle smoke
+```
+
+改完 Host 代码后，将插件行 `include:token-usage-statistic` 禁用再启用即可重新导入模块；Client 代码刷新页面即可。
+
+开发规范见 [development-guide.md](docs/04-development/development-guide.md)。
+
+## 排障
+
+更多症状与处理见 [troubleshooting.md](docs/06-operations/troubleshooting.md)。
+
+- **面板 404**：看 `activation.json`。`route: "failed"` 带原因；文件不存在说明 `webServer` 未注入。
+- **账户显示「无公开接口」**：该 provider 没有内置 scheme，用 `accounts.monitors` 配一个通用映射。
+- **账户显示「未登录/未配置」**：在 DSH 中登录 DeepSeek 账户，或配置对应 `apiKeyEnv` 后点「刷新账户」。
+- **账户查询失败**：显示粗粒度原因（超时、401、限流、响应非法），不会记录或显示密钥。
+- **费用/预算为「—」**：存在未定价路由或模型；用 `pricing.providers` / `modelAliases` / `pricing.rules` 扩展。
+- **导出 403**：端点只接受回环请求，不要经反向代理暴露到局域网。
+
+## 参考
+
+### 安装细节
+
+完整说明见 [installation-guide.md](docs/06-operations/installation-guide.md)。
+
+#### Desktop 的 `dsh` 是什么
+
+`dsh` 是 DeepSeek Harness 的命令行入口。Desktop 自带一份运行时（Node、pnpm、dsh），但**不加入 PATH**：直接敲 `dsh` 可能找不到，或命中 npm 全局版本。`npm run plugin:install -- desktop` 会自动定位 App 自带的 CLI，所以 Desktop 安装不要求 PATH 上有 `dsh`。
+
+手动执行时用完整路径：
+
+```powershell
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+& $dsh plugin --profile desktop add token-usage-statistic
+```
+
+下文 `$dsh` 均指这个路径。
+
+能否使用 `--profile desktop` 取决于 `dsh` 的来源：
+
+| 来源 | `--profile desktop` |
 | --- | --- |
-| Desktop 自带的 `dsh` | 支持，且内置 pnpm |
-| npm 包 `@deepseek-ai/dsh` ≤ `0.1.3` | 支持（早期版本没有限制） |
-| npm 包 `@deepseek-ai/dsh` ≥ `0.1.5-alpha.1`（含当前最新 `0.2.1-rc.5`） | 拒绝 |
+| Desktop 自带 | 支持，且内置 pnpm |
+| npm `@deepseek-ai/dsh` ≤ `0.1.3` | 支持（早期版本没有限制） |
+| npm `@deepseek-ai/dsh` ≥ `0.1.5-alpha.1`（含 `0.2.1-rc.5`） | 拒绝 |
 
-被拒绝时报：
+npm 新版报：
 
 ```text
 error: profile "desktop" is managed exclusively by the Electron application
 ```
 
-先确认当前命中的是哪个：
+检查当前命中：`where.exe dsh`、`dsh --version`。执行安装或卸载前先完全退出 Desktop（含托盘图标），装完再启动；Host 代码只在启动时加载。
 
-```powershell
-where.exe dsh
-dsh --version
-```
-
-指向 `...\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd` 的可以直接用；指向 npm 全局（`...\npm\dsh.cmd`）且版本 ≥ `0.1.5-alpha.1` 时，改用 Desktop 自带的 `dsh`：
-
-- **Windows**：默认（按用户安装）位于 `%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`；装在别处时换成实际安装目录。
-- **macOS**：应用菜单 → **管理 dsh 命令…** → **安装**，之后直接使用 `dsh`。
-
-手动执行时，下文用 `$dsh` 代表 Desktop 自带 `dsh` 的完整路径；在新的 PowerShell 窗口里先执行这一行：
-
-```powershell
-$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
-& $dsh plugin --profile desktop list
-```
-
-执行安装或卸载前先**完全退出 Desktop（含托盘图标）**，装完再启动；Host 代码只在启动时加载。
-
-> 旧版 npm `dsh` 之所以能用，是因为当时它没有 desktop 限制；新版会对 `--profile desktop` 直接报错，这不是路径或参数写法的问题。
-
-### 前置条件
-
-- Node.js >= 20（从源码构建或本地开发时需要）
-- 已初始化的 DSH profile：Desktop 至少启动过一次（会自动创建 `desktop` profile）；Web 由 `dsh web` 或首次 `dsh plugin --profile web` 初始化
-- 安装 npm 包时需要能访问 npm registry
-- 完全无法访问 npm registry 的环境用**方式三**的 `--offline` 本地安装，不需要 registry
-- Desktop 不要求 PATH 上有 `dsh`：`npm run plugin:install -- desktop` 会自动定位 App 自带的 CLI
-- 用 npm 安装的 `dsh` 执行 `dsh plugin` 时，需要 `pnpm` 在 PATH 上（Desktop 自带的 `dsh` 已内置 pnpm，无需另装）
-- 账户余额功能需要 DSH 已登录 DeepSeek 账户，或配置了对应 provider 凭据
-
-### 方式一：npm 包（推荐）
-
-**DSH Desktop**
-
-图形界面：
-
-1. 打开 DSH Desktop → **插件 / Plugins**
-2. 搜索或直接输入包名 `token-usage-statistic`，点击安装
-3. 安装完成后重启 DSH Desktop（Host 代码只在启动时加载）
-4. 左侧边栏出现「模型用量统计」
-
-> 本插件尚未收录进官方插件库（代码还没有合入官方仓库），所以 Discover/市场里搜不到是正常的；直接按包名安装即可。目标机器无法访问 npm 时，用方式三的本地离线安装。
-
-命令行（与图形界面等价）：
-
-```powershell
-# 先完全退出 Desktop
-& $dsh plugin --profile desktop add token-usage-statistic
-# 再启动 Desktop
-```
-
-安装成功后，包会出现在 `desktop` profile 的 `dsh.profile.bundles` 里，下次启动即加载。
-
-也可以让脚本自动找 CLI：`npm run plugin:install -- desktop --npm`（`--npm` 表示安装 registry 上的包）。
-
-在 Desktop 会话里也可以让 agent 执行（`plugin_manager` 作用于当前会话所在的 profile）：
-
-```text
-plugin_manager( action: "install_bundle", target: "token-usage-statistic" )
-```
-
-**DSH Web**
-
-```bash
-dsh plugin --profile web add token-usage-statistic
-# 然后重启 dsh web
-dsh web
-```
-
-### 方式二：GitHub 源码
+#### GitHub 源码
 
 ```powershell
 # Web
 dsh plugin --profile web add github:zhiwuli0228/token-usage-statistic
 
-# Desktop（先完全退出 Desktop）
+# Desktop（先完全退出）
 & $dsh plugin --profile desktop add github:zhiwuli0228/token-usage-statistic
 ```
 
 git 托管安装需要本机有 `git`。如果 pnpm 拦截了包的构建脚本，按提示把打印出的键加到对应 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds` 下再重试。
 
-### 方式三：本地安装（官方库未收录 / 无法访问 npm）
+#### 本地 / 离线安装
 
-本插件尚未收录进官方插件库，Discover/市场搜不到时用这一节；目标机器完全无法访问 npm registry 时也用这一节。安装不需要构建：仓库已提交 `index.js`、`client.js` 等构建产物。
-
-**在本仓库里（推荐）**
+安装不需要构建：仓库已提交 `index.js`、`client.js` 等产物。目录安装是 `link:`，源目录不能删/移；tarball 会复制进 profile，源目录可移走，但以后重装仍需该 tgz。
 
 ```powershell
-# 先完全退出 Desktop
-npm run plugin:install -- desktop            # 链接当前仓库，自动找 Desktop 自带 dsh
-npm run plugin:install -- desktop --offline  # 明确不访问 registry
-npm run plugin:install -- desktop --dry-run  # 只看将执行什么
+# 在本仓库里（Desktop 先完全退出）
+npm run plugin:install -- desktop --offline
+npm run plugin:install -- web --offline
+
+# 指定目录或 tarball
+npm run plugin:install -- desktop --spec "D:\offline\token-usage-statistic" --offline
+npm run plugin:install -- desktop --spec "D:\offline\token-usage-statistic-1.0.2.tgz" --offline
 ```
 
-脚本会自动定位 App 自带的 `dsh`、检查 App 是否已退出，并把当前仓库链接进 `desktop` profile；`--npm` 改为安装 npm 上已发布的包。Web 用 `npm run plugin:install -- web`（需要 PATH 上有 `pnpm`）。
-
-**拷贝到目标机器后（没有本仓库 / 手动 CLI）**
-
-准备：
-
-- 直接复制整个目录，至少包含 `package.json`、`index.js`、`client.js`、`cordis.patch.yml`、`locale/`、`icon.svg`。
-- 或打包成 tarball：在仓库根目录执行 `npm pack`，得到 `token-usage-statistic-<version>.tgz`。
-
-**DSH Desktop**
+没有本仓库时直接调 CLI：
 
 ```powershell
-# 先完全退出 Desktop
 $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
 
-# 目录：链接安装，源目录不能删/移；改 src 并重新 build 后自动生效
 & $dsh plugin --profile desktop add "D:\offline\token-usage-statistic" --offline
-
-# 或 tarball：内容复制进 profile，源目录可移走（以后重装仍需这个 tgz）
 & $dsh plugin --profile desktop add "D:\offline\token-usage-statistic-1.0.2.tgz" --offline
 
-# 再启动 Desktop
-```
-
-`--offline` 让 pnpm 不访问 registry；本地目录和 tarball 都不需要网络。Desktop 自带的 `dsh` 已内置 pnpm，目标机器无需另装。
-
-**DSH Web**
-
-```powershell
-# 目录
 dsh plugin --profile web add "D:\offline\token-usage-statistic" --offline
-
-# 或 tarball
 dsh plugin --profile web add "D:\offline\token-usage-statistic-1.0.2.tgz" --offline
-
-dsh web
 ```
 
-Web 走 npm 安装的 `dsh`，需要本机有 `pnpm`；没有 pnpm 时优先改用 Desktop（桌面版自带 pnpm，装到 `desktop` profile），或先离线准备好 pnpm 再执行。
+`--offline` 让 pnpm 不访问 registry；目录和 tarball 都不需要网络。Desktop 自带的 `dsh` 已内置 pnpm；Web 需要 PATH 上有 `pnpm`。
 
-**在 Desktop 会话里让 agent 执行**
+Desktop 会话里也可以让 agent 执行：`plugin_manager( action: "install_bundle", target: "D:\\offline\\token-usage-statistic" )`，作用于当前会话所在的 profile。
 
-```text
-plugin_manager( action: "install_bundle", target: "D:\\offline\\token-usage-statistic" )
-```
+只有改了 `src/` 才需要构建：`npm install && npm run build`。
 
-`plugin_manager` 作用于**当前会话所在的 profile**：Desktop 会话装到 `desktop`，Web 会话装到 `web`。
-
-**只有改了 `src/` 才需要构建**
-
-```bash
-npm install
-npm run build
-```
-
-普通安装直接使用仓库里的构建产物，不需要 `npm install`。改完源码后重启 Host 并刷新页面；只改源码不会生效。
-
-### 方式四：手动 patch（高级）
+#### 手动 patch（高级）
 
 如果不用插件管理器，可以把包加入 profile 的 `package.json` 依赖，并在该 profile 的 `cordis.patch.yml` 中插入：
 
@@ -305,36 +328,23 @@ profile 目录：
 - Desktop：`%DSH_HOME%\profiles\desktop`
 - Web：`%DSH_HOME%\profiles\web`
 
-然后重新加载 profile。手改 patch 容易与 Desktop 的 profile 恢复流程冲突，能用 `dsh plugin` 就不要手改。没有可用 pnpm 时也不要先走这条路：Desktop 自带 `dsh` 已内置 pnpm，方式三的离线安装更可靠。
+然后重新加载 profile。手改 patch 容易与 Desktop 的 profile 恢复流程冲突，能用 `dsh plugin` 就不要手改。
 
-### 安装后检查
+#### 检查与卸载
 
 ```powershell
-# Web
+# 检查
 dsh plugin --profile web list | findstr token-usage-statistic
-
-# Desktop
 & $dsh plugin --profile desktop list | findstr token-usage-statistic
-```
 
-输出中应出现 `token-usage-statistic@`（npm/tarball 安装显示版本号，本地目录链接显示 `link:` 路径）。Desktop 的 **插件** 页也应显示该包已启用。
-
-面板入口：左侧边栏 → **模型用量统计**。如果看不到入口，先确认 Host 已重启、页面已刷新。
-
-### 卸载
-
-```powershell
+# 卸载
 dsh plugin --profile web remove token-usage-statistic
 & $dsh plugin --profile desktop remove token-usage-statistic
 ```
 
-卸载不会删除账本，`usage.jsonl` 仍然保留。
+输出中应出现 `token-usage-statistic@`（npm/tarball 安装显示版本号，本地目录链接显示 `link:` 路径）。卸载不会删除账本，`usage.jsonl` 仍然保留。
 
-### 数据位置
-
-默认：`%DSH_HOME%\token-usage-statistic\usage.jsonl`。可用 `dataFile` 配置覆盖。
-
-## 配置
+### 配置参考
 
 所有字段可选，非法值回退默认：
 
@@ -377,88 +387,6 @@ dsh plugin --profile web remove token-usage-statistic
           daily: 5
           monthly: 50
 ```
-
-## 账户与额度
-
-自动发现三类来源：
-
-1. **DSH Desktop 账户**（`deepseekAccount` Host 服务）：登录后读取充值/赠送钱包；未登录显示「未登录」。
-2. **官方 DeepSeek API Key**（`llm-deepseek`）：`GET /user/balance`。
-3. **`llm-pi-ai` provider**：按 provider id 或 host 匹配内置 scheme（DeepSeek、Moonshot、Z.AI、OpenRouter、OrcaRouter）；没有公开接口的 provider 显示「无公开接口」，不会发起猜测性请求。
-
-`accounts.monitors` 可以补上任意私有监控端点：`baseURL` 必须是完整 URL，数值用 JSON Pointer 选取；`mode: subscription` 时用 `windows` 指针选取额度数组。
-
-- 刷新在后台进行（默认 10 分钟），面板「刷新账户」会立即触发一次。
-- 最近一次结果写入 `accounts.json`，重启后先显示旧值并标记 stale，直到刷新成功。
-- 凭据只经 `ctx.credentials` 在 Host 内解析，响应与导出都不含密钥、请求头或上游原始 JSON。
-
-## 预算
-
-`budgets.daily` / `budgets.monthly` 与 `budgets.currency` 定义上限。预算只汇总面板已经展示的同一批费用估算：
-
-- 达到 80% 为 `warn`，达到 100% 为 `exceeded`；
-- 窗口内任一样本未定价或币种不一致时，`costComplete: false`，不下结论、不显示百分比；
-- 未配置上限时不显示预算条。
-
-## 导出
-
-| 端点 | 内容 |
-| --- | --- |
-| `GET /token-usage-statistic/api/export/daily.csv` | 每行一个日期 + provider + model |
-| `GET /token-usage-statistic/api/export/sessions.csv` | 每行一个会话及其实 provider/model 集合 |
-| `GET /token-usage-statistic/api/export.json` | `schemaVersion: 1.0.0`，含用量、预算与账户快照 |
-
-CSV 带 UTF-8 BOM、CRLF、双引号转义，并对以 `= + - @` 开头的文本加前导单引号（防公式注入）。导出只复制允许列表字段，不含提示词、回复、文件路径或凭据。
-
-## 价格口径
-
-内置目录为 DeepSeek 官方 USD 价（每 1M tokens），覆盖 `deepseek-v4-flash` / `deepseek-v4-pro` 的三段历史：平价期、全周峰谷期、工作日峰谷期；峰时段为上海时间 09:00–12:00 与 14:00–18:00。
-
-- 桌面账号路由上报的 `deepseek-flash` / `deepseek-pro` 通过内置别名映射到 `v4` 规则；可用 `modelAliases` 覆盖。
-- 只有 `pricing.providers` 内的路由会被计价；第三方网关默认**未定价**。
-- 任一样本缺少可靠单价时金额为 `null`，面板显示「—」并提示未定价样本数；token 总数不受影响。
-
-## API
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/token-usage-statistic/api/summary` | 用量、费用、预算、回填状态；`days=1\|7\|30\|all` |
-| `GET` | `/token-usage-statistic/api/accounts` | 账户快照；`refresh=1` 触发后台刷新 |
-| `GET` | `/token-usage-statistic/api/export/daily.csv` | 按日 provider/model CSV |
-| `GET` | `/token-usage-statistic/api/export/sessions.csv` | 会话 CSV |
-| `GET` | `/token-usage-statistic/api/export.json` | 版本化 JSON |
-
-所有端点只读、仅回环、`cache-control: no-store`；非回环请求返回 `403`，非 GET/HEAD 返回 `405`。
-
-## 数据与迁移
-
-- 账本：默认 `%DSH_HOME%\token-usage-statistic\usage.jsonl`，一行一个样本。
-- `accounts.json`：最近一次账户快照，可删；不会包含凭据。
-- `activation.json`：每次激活的路由回执（`registered` / 失败原因），排障用，可删。
-- v1 记录（无 `sampleKey`）在加载时自动迁移为 `assistant:<seq>`。
-- 清空重来：停用插件 → 删除 `usage.jsonl` → 启用（会重新回填历史）。
-
-## 开发
-
-```powershell
-npm install
-npm run build       # esbuild → index.js + client.js
-npm run typecheck   # tsc --noEmit
-npm test            # vitest，120 个用例
-npm run test:bundle # 对构建后的 client.js 做假 shell 冒烟
-npm run check       # typecheck + build + test + bundle smoke
-```
-
-改完 Host 代码后，将插件行 `include:token-usage-statistic` 禁用再启用即可重新导入模块；Client 代码刷新页面即可。
-
-## 排障
-
-- **面板 404**：看 `activation.json`。`route: "failed"` 带原因；文件不存在说明 `webServer` 未注入。
-- **账户显示「无公开接口」**：该 provider 没有内置 scheme，用 `accounts.monitors` 配一个通用映射。
-- **账户显示「未登录/未配置」**：在 DSH 中登录 DeepSeek 账户，或配置对应 `apiKeyEnv` 后点「刷新账户」。
-- **账户查询失败**：显示粗粒度原因（超时、401、限流、响应非法），不会记录或显示密钥。
-- **费用/预算为「—」**：存在未定价路由或模型；用 `pricing.providers` / `modelAliases` / `pricing.rules` 扩展。
-- **导出 403**：端点只接受回环请求，不要经反向代理暴露到局域网。
 
 ## 范围与限制
 
