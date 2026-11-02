@@ -36,6 +36,8 @@ The plugin is usable and published. `1.0.2` is the latest npm release. `main` co
 - [x] Non-blocking session-title refresh (30s TTL, in-flight dedupe)
 - [x] Fixed daily chart date-label clipping
 - [x] Metric picker moved next to the chart with a live "current metric / total" line
+- [x] Desktop manual CLI installation documented for every install method (npm, GitHub source, local directory, manual patch): `dsh plugin --profile desktop` works with Desktop's bundled `dsh` and with npm `@deepseek-ai/dsh` <= 0.1.3; npm `>= 0.1.5-alpha.1` rejects the desktop profile
+- [x] Offline local install documented for both profiles: `plugin --profile desktop|web add <folder-or-tgz> --offline` needs no registry; a plain install uses the committed build output, no `npm install` required
 - [x] Project docs hub initialized (`00-project` → `99-archive`)
 - [x] Project-level agent rules initialized (`AGENTS.md`)
 - [x] Single-file change records replace the four-file proposal/spec/tasks process (`docs/03-changes/`)

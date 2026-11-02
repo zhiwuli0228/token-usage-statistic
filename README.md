@@ -102,25 +102,78 @@ scripts/smoke-client.mjs   对构建后的 client.js 做假 shell 冒烟
 
 > Desktop 与 Web 使用不同的 profile（`desktop` / `web`），安装是分开的：在 Desktop 安装不会自动出现在 Web，反之亦然。两端都需要时，各装一次。
 
+### Desktop 的命令行入口
+
+桌面版用的就是 `dsh plugin --profile desktop ...`。能否直接执行，取决于这个 `dsh` 来自哪里：
+
+| `dsh` 来源 | `--profile desktop` |
+| --- | --- |
+| Desktop 自带的 `dsh` | 支持，且内置 pnpm |
+| npm 包 `@deepseek-ai/dsh` ≤ `0.1.3` | 支持（早期版本没有限制） |
+| npm 包 `@deepseek-ai/dsh` ≥ `0.1.5-alpha.1`（含当前最新 `0.2.1-rc.5`） | 拒绝 |
+
+被拒绝时报：
+
+```text
+error: profile "desktop" is managed exclusively by the Electron application
+```
+
+先确认当前命中的是哪个：
+
+```powershell
+where.exe dsh
+dsh --version
+```
+
+指向 `...\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd` 的可以直接用；指向 npm 全局（`...\npm\dsh.cmd`）且版本 ≥ `0.1.5-alpha.1` 时，改用 Desktop 自带的 `dsh`：
+
+- **Windows**：默认（按用户安装）位于 `%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`；装在别处时换成实际安装目录。
+- **macOS**：应用菜单 → **管理 dsh 命令…** → **安装**，之后直接使用 `dsh`。
+
+下文用 `$dsh` 代表 Desktop 自带 `dsh` 的完整路径；在新的 PowerShell 窗口里先执行这一行：
+
+```powershell
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+& $dsh plugin --profile desktop list
+```
+
+执行安装或卸载前先**完全退出 Desktop（含托盘图标）**，装完再启动；Host 代码只在启动时加载。
+
+> 旧版 npm `dsh` 之所以能用，是因为当时它没有 desktop 限制；新版会对 `--profile desktop` 直接报错，这不是路径或参数写法的问题。
+
 ### 前置条件
 
 - Node.js >= 20（从源码构建或本地开发时需要）
-- 已初始化的 DSH profile：`desktop` 或 `web`
+- 已初始化的 DSH profile：Desktop 至少启动过一次（会自动创建 `desktop` profile）；Web 由 `dsh web` 或首次 `dsh plugin --profile web` 初始化
 - 安装 npm 包时需要能访问 npm registry
+- 完全无法访问 npm registry 的环境用**方式三**的 `--offline` 本地安装，不需要 registry
+- 用 npm 安装的 `dsh` 执行 `dsh plugin` 时，需要 `pnpm` 在 PATH 上（Desktop 自带的 `dsh` 已内置 pnpm，无需另装）
 - 账户余额功能需要 DSH 已登录 DeepSeek 账户，或配置了对应 provider 凭据
 
 ### 方式一：npm 包（推荐）
 
 **DSH Desktop**
 
+图形界面：
+
 1. 打开 DSH Desktop → **插件 / Plugins**
 2. 搜索或直接输入包名 `token-usage-statistic`，点击安装
 3. 安装完成后重启 DSH Desktop（Host 代码只在启动时加载）
 4. 左侧边栏出现「模型用量统计」
 
-> 如果 Discover 里暂时搜不到，说明官方索引尚未同步；直接按包名安装即可。
+> 本插件尚未收录进官方插件库（代码还没有合入官方仓库），所以 Discover/市场里搜不到是正常的；直接按包名安装即可。目标机器无法访问 npm 时，用方式三的本地离线安装。
 
-也可以在对话中让 agent 执行：
+命令行（与图形界面等价）：
+
+```powershell
+# 先完全退出 Desktop
+& $dsh plugin --profile desktop add token-usage-statistic
+# 再启动 Desktop
+```
+
+安装成功后，包会出现在 `desktop` profile 的 `dsh.profile.bundles` 里，下次启动即加载。
+
+在 Desktop 会话里也可以让 agent 执行（`plugin_manager` 作用于当前会话所在的 profile）：
 
 ```text
 plugin_manager( action: "install_bundle", target: "token-usage-statistic" )
@@ -136,36 +189,76 @@ dsh web
 
 ### 方式二：GitHub 源码
 
-```bash
+```powershell
+# Web
 dsh plugin --profile web add github:zhiwuli0228/token-usage-statistic
+
+# Desktop（先完全退出 Desktop）
+& $dsh plugin --profile desktop add github:zhiwuli0228/token-usage-statistic
 ```
 
-Desktop 端可以先 clone 到本地，再按方式三安装。
+git 托管安装需要本机有 `git`。如果 pnpm 拦截了包的构建脚本，按提示把打印出的键加到对应 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds` 下再重试。
 
-### 方式三：本地目录（开发/调试）
+### 方式三：本地安装（官方库未收录 / 无法访问 npm）
+
+本插件尚未收录进官方插件库，Discover/市场搜不到时用这一节；目标机器完全无法访问 npm registry 时也用这一节。安装不需要构建：仓库已提交 `index.js`、`client.js` 等构建产物。
+
+**准备（在一台能拿到源码的机器上）**
+
+- 直接复制整个目录，至少包含 `package.json`、`index.js`、`client.js`、`cordis.patch.yml`、`locale/`、`icon.svg`。
+- 或打包成 tarball：在仓库根目录执行 `npm pack`，得到 `token-usage-statistic-<version>.tgz`。
+
+**DSH Desktop**
+
+```powershell
+# 先完全退出 Desktop
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+
+# 目录：链接安装，源目录不能删/移；改 src 并重新 build 后自动生效
+& $dsh plugin --profile desktop add "D:\offline\token-usage-statistic" --offline
+
+# 或 tarball：内容复制进 profile，源目录可移走（以后重装仍需这个 tgz）
+& $dsh plugin --profile desktop add "D:\offline\token-usage-statistic-1.0.2.tgz" --offline
+
+# 再启动 Desktop
+```
+
+`--offline` 让 pnpm 不访问 registry；本地目录和 tarball 都不需要网络。Desktop 自带的 `dsh` 已内置 pnpm，目标机器无需另装。
+
+**DSH Web**
+
+```powershell
+# 目录
+dsh plugin --profile web add "D:\offline\token-usage-statistic" --offline
+
+# 或 tarball
+dsh plugin --profile web add "D:\offline\token-usage-statistic-1.0.2.tgz" --offline
+
+dsh web
+```
+
+Web 走 npm 安装的 `dsh`，需要本机有 `pnpm`；没有 pnpm 时优先改用 Desktop（桌面版自带 pnpm，装到 `desktop` profile），或先离线准备好 pnpm 再执行。
+
+**在 Desktop 会话里让 agent 执行**
 
 ```text
-plugin_manager( action: "install_bundle", target: "E:\\009workspace\\dsh\\token-usage-statistic" )
+plugin_manager( action: "install_bundle", target: "D:\\offline\\token-usage-statistic" )
 ```
 
-Web profile：
+`plugin_manager` 作用于**当前会话所在的 profile**：Desktop 会话装到 `desktop`，Web 会话装到 `web`。
 
-```bash
-dsh plugin --profile web add E:\009workspace\dsh\token-usage-statistic
-```
-
-本地目录是链接安装。修改 `src/` 后必须：
+**只有改了 `src/` 才需要构建**
 
 ```bash
 npm install
 npm run build
 ```
 
-然后重启 Host 并刷新页面；只改源码不会生效。
+普通安装直接使用仓库里的构建产物，不需要 `npm install`。改完源码后重启 Host 并刷新页面；只改源码不会生效。
 
 ### 方式四：手动 patch（高级）
 
-如果不用插件管理器，可以把包加入 profile 的 `package.json` 依赖，并在 `cordis.patch.yml` 中插入：
+如果不用插件管理器，可以把包加入 profile 的 `package.json` 依赖，并在该 profile 的 `cordis.patch.yml` 中插入：
 
 ```yaml
 - insert:
@@ -173,18 +266,35 @@ npm run build
       name: token-usage-statistic
 ```
 
-然后重新加载 profile。一般不需要这样做。
+profile 目录：
+
+- Desktop：`%DSH_HOME%\profiles\desktop`
+- Web：`%DSH_HOME%\profiles\web`
+
+然后重新加载 profile。手改 patch 容易与 Desktop 的 profile 恢复流程冲突，能用 `dsh plugin` 就不要手改。没有可用 pnpm 时也不要先走这条路：Desktop 自带 `dsh` 已内置 pnpm，方式三的离线安装更可靠。
 
 ### 安装后检查
 
-```bash
-# Web profile
+```powershell
+# Web
 dsh plugin --profile web list | findstr token-usage-statistic
+
+# Desktop
+& $dsh plugin --profile desktop list | findstr token-usage-statistic
 ```
 
-Desktop 端在 **插件** 页应能看到 `token-usage-statistic` 已启用。
+输出中应出现 `token-usage-statistic@`（npm/tarball 安装显示版本号，本地目录链接显示 `link:` 路径）。Desktop 的 **插件** 页也应显示该包已启用。
 
 面板入口：左侧边栏 → **模型用量统计**。如果看不到入口，先确认 Host 已重启、页面已刷新。
+
+### 卸载
+
+```powershell
+dsh plugin --profile web remove token-usage-statistic
+& $dsh plugin --profile desktop remove token-usage-statistic
+```
+
+卸载不会删除账本，`usage.jsonl` 仍然保留。
 
 ### 数据位置
 

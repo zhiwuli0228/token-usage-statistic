@@ -24,6 +24,13 @@ The desktop profile currently links this package:
 "token-usage-statistic": "link:E:/009workspace/dsh/token-usage-statistic"
 ```
 
+To re-link from the command line, run it after fully quitting Desktop. Desktop's bundled `dsh` supports `--profile desktop`; npm `dsh` >= `0.1.5-alpha.1` rejects it:
+
+```powershell
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+& $dsh plugin --profile desktop add E:\009workspace\dsh\token-usage-statistic
+```
+
 After changing Host code:
 
 1. Restart DSH Desktop.

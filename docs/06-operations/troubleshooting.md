@@ -44,6 +44,23 @@ At least one counted sample is unpriced, or currencies are mixed. Extend `pricin
 
 The endpoints are loopback-only. Do not expose them through a reverse proxy.
 
+## `dsh plugin --profile desktop` Is Rejected
+
+```text
+error: profile "desktop" is managed exclusively by the Electron application
+```
+
+The active `dsh` is an npm install at `>= 0.1.5-alpha.1`. Older npm CLIs (`<= 0.1.3`) allowed `--profile desktop`; newer ones reserve it for the Desktop application.
+
+Run `where.exe dsh` and `dsh --version` to confirm. If it resolves to the npm CLI, use Desktop's bundled `dsh` instead (it supports the desktop profile and bundles pnpm):
+
+```powershell
+$dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
+& $dsh plugin --profile desktop add token-usage-statistic
+```
+
+If that reports the profile is not initialized, start Desktop once, quit it fully (including the tray icon), then re-run.
+
 ## npm Publish Fails With 404/E404
 
 - The package may not exist yet.
