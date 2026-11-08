@@ -123,6 +123,8 @@ GitHub 源码、本地目录 / tarball、离线安装、手动 patch、卸载 �
 | DSH Web (`dsh web`) | ✅ | 同一个侧边栏面板 |
 | DSH CLI / headless | ⚠️ 仅采集 | 无侧边栏；账本仍写入，但面板与 HTTP 导出依赖 Web 载体 |
 
+> **版本要求**：插件通过 `engines.dsh` 声明支持 DSH **0.2.x**（`>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`）。老的 0.1.x 与未来的 0.3.x 宿主会被拒绝安装/激活。当前 Desktop 自带 `0.2.1-rc.5`、npm `dsh web` 最新 `0.2.2-rc.1`，都在范围内。
+
 ## 使用
 
 - 侧栏 →「模型用量统计」，三个标签：**用量 / 账户 / 导出**。
@@ -233,6 +235,7 @@ npm run check       # typecheck + build + test + bundle smoke
 - **账户查询失败**：显示粗粒度原因（超时、401、限流、响应非法），不会记录或显示密钥。
 - **费用/预算为「—」**：存在未定价路由或模型；用 `pricing.providers` / `modelAliases` / `pricing.rules` 扩展。
 - **导出 403**：端点只接受回环请求，不要经反向代理暴露到局域网。
+- **安装/激活被拒**：宿主 dsh 不在 `engines.dsh` 范围内（需要 DSH `0.2.x`）；`dsh --version` 确认版本，升级宿主后重试。
 
 ## 参考
 
@@ -259,7 +262,9 @@ $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\ds
 | --- | --- |
 | Desktop 自带 | 支持，且内置 pnpm |
 | npm `@deepseek-ai/dsh` ≤ `0.1.3` | 支持（早期版本没有限制） |
-| npm `@deepseek-ai/dsh` ≥ `0.1.5-alpha.1`（含 `0.2.1-rc.5`） | 拒绝 |
+| npm `@deepseek-ai/dsh` ≥ `0.1.5-alpha.1`（含 `0.2.2-rc.1`） | 拒绝 |
+
+本插件通过 `engines.dsh` 声明宿主版本范围：`>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`（DSH 0.2.x）。宿主低于 `0.2.1-rc.5` 或属于 `0.3.x` 时，安装/激活会被拒绝。
 
 npm 新版报：
 

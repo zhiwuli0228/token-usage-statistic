@@ -10,6 +10,14 @@
 
 Desktop and Web use separate profiles (`desktop` / `web`). Installing in one does not install in the other.
 
+The plugin declares a DSH host requirement via `engines.dsh`:
+
+```text
+>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0
+```
+
+That is DSH **0.2.x**: hosts below `0.2.1-rc.5` (old `0.1.x`) and any `0.3.x` refuse to install or activate the plugin. Current hosts in range: Desktop bundled `0.2.1-rc.5`, npm `dsh web` latest `0.2.2-rc.1`.
+
 ## The Desktop CLI Entry Point
 
 Desktop installs use `dsh plugin --profile desktop ...`. Whether that command works as typed depends on where `dsh` comes from.
@@ -28,7 +36,7 @@ The manual instructions below apply outside the repository, or when calling the 
 | --- | --- |
 | The `dsh` shipped with Desktop | Supported; pnpm is bundled |
 | npm package `@deepseek-ai/dsh` <= `0.1.3` | Supported (early versions had no restriction) |
-| npm package `@deepseek-ai/dsh` >= `0.1.5-alpha.1` (including current `0.2.1-rc.5`) | Rejected |
+| npm package `@deepseek-ai/dsh` >= `0.1.5-alpha.1` (including current `0.2.2-rc.1`) | Rejected |
 
 A newer npm CLI reports:
 
@@ -62,6 +70,7 @@ Fully quit Desktop (including the tray icon) before an install or removal, then 
 ## Prerequisites
 
 - Node.js >= 20 for source builds/dev
+- DSH host in `0.2.x` (`engines.dsh`: `>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`); older hosts and `0.3.x` refuse the plugin
 - An initialized DSH profile: Desktop must have started at least once (it creates the `desktop` profile); Web is initialized by `dsh web` or the first `dsh plugin --profile web`
 - npm registry access for the npm install path
 - For hosts with no npm registry access, use the offline local install below (`--offline`); no registry is needed

@@ -44,6 +44,16 @@ At least one counted sample is unpriced, or currencies are mixed. Extend `pricin
 
 The endpoints are loopback-only. Do not expose them through a reverse proxy.
 
+## Install or Activation Rejected (Version Not Supported)
+
+The host DSH version is outside the plugin's `engines.dsh` range. The plugin requires DSH `0.2.x`:
+
+```text
+>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0
+```
+
+Check the host version with `dsh --version` (or the bundled CLI at `...\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd --version`). Old `0.1.x` hosts and future `0.3.x` hosts refuse to install or activate the plugin. Upgrade the host to `0.2.x` and retry.
+
 ## Desktop Has No `dsh` Command
 
 `dsh` is the DeepSeek Harness CLI. Desktop ships its own copy inside the app directory but does **not** add it to PATH, so typing `dsh` may find nothing, or may find a different npm-installed version.

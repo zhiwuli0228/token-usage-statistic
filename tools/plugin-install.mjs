@@ -169,10 +169,10 @@ ${desktopCliCandidates(platform, env).map((candidate) => `  ${candidate}`).join(
 export function desktopAppRunning(platform) {
 	try {
 		if (platform === 'win32') {
-			const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeek Harness.exe', '/NH'], { encoding: 'utf8' })
+			const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeek Harness.exe', '/NH'], { encoding: 'utf8', timeout: 5000, windowsHide: true })
 			return /DeepSeek Harness\.exe/iu.test(out)
 		}
-		const out = execFileSync('pgrep', ['-f', 'DeepSeek Harness'], { encoding: 'utf8' })
+		const out = execFileSync('pgrep', ['-f', 'DeepSeek Harness'], { encoding: 'utf8', timeout: 5000 })
 		return out.trim().length > 0
 	} catch {
 		return undefined
@@ -263,8 +263,8 @@ export function main(argv, options = {}) {
 			log('先完整启动一次 DeepSeek Harness，让它初始化 profile，再完全退出，然后重跑本命令。')
 			return 1
 		}
-		const running = desktopAppRunning(platform)
-		if (running === true && !plan.force) {
+		const running = plan.force ? false : desktopAppRunning(platform)
+		if (running === true) {
 			if (plan.dryRun) {
 				log('note     DeepSeek Harness 正在运行 —— 真正安装前必须完全退出（--dry-run 不受影响）。')
 			} else {

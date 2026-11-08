@@ -50,7 +50,7 @@ describe('plugin-install script', () => {
   it('dry-runs a desktop install with an explicit CLI', () => {
     const home = tempHome()
     try {
-      const result = run(['desktop', '--home', home, '--cli', fakeCli(home), '--dry-run'])
+      const result = run(['desktop', '--home', home, '--cli', fakeCli(home), '--dry-run', '--force'])
       expect(result.status).toBe(0)
       expect(result.stdout).toContain('dry-run:')
       expect(result.stdout).toContain('plugin --profile desktop add')
@@ -75,10 +75,10 @@ describe('plugin-install script', () => {
     const home = tempHome()
     try {
       const cli = fakeCli(home)
-      const install = run(['desktop', '--home', home, '--cli', cli, '--dry-run', '--offline'])
+      const install = run(['desktop', '--home', home, '--cli', cli, '--dry-run', '--offline', '--force'])
       expect(install.status).toBe(0)
       expect(install.stdout).toContain('--offline')
-      const remove = run(['desktop', '--home', home, '--cli', cli, '--dry-run', '--remove', '--offline'])
+      const remove = run(['desktop', '--home', home, '--cli', cli, '--dry-run', '--remove', '--offline', '--force'])
       expect(remove.status).toBe(0)
       expect(remove.stdout).toContain('remove token-usage-statistic')
       expect(remove.stdout).not.toContain('--offline')

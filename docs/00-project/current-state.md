@@ -42,10 +42,13 @@ The plugin is usable and published. `1.0.2` is the latest npm release. `main` co
 - [x] Project docs hub initialized (`00-project` → `99-archive`)
 - [x] Project-level agent rules initialized (`AGENTS.md`)
 - [x] Single-file change records replace the four-file proposal/spec/tasks process (`docs/03-changes/`)
+- [x] `engines.dsh` declared: `>=0.2.1-rc.5 <0.3.0-0 || >=0.2.2-0 <0.3.0-0` (DSH 0.2.x only; 0.1.x and future 0.3.x refuse to install/activate) — verified by semver against `0.2.1-rc.5` and live on a `0.2.2-rc.1` web host (tarball install → activation registered → panel + summary API 200)
+- [x] Dev dependencies refreshed: vitest `5.0.5` → `5.1.0` (the only outdated dev dep)
+- [x] Installer hardening: app-running check is bounded to 5 s; `--force` skips the check entirely; desktop dry-run tests pass `--force`
 
 ## Tests and Verification
 
-- `vitest`: 128 tests across 15 files
+- `vitest` 5.1.0: 135 tests across 16 files
 - `npm run typecheck`
 - `npm run build`
 - `npm run test:bundle` (fake-shell bundle smoke)
